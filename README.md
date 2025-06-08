@@ -1,72 +1,3 @@
-After conducting a thorough code review of the ClaudeBox update, here's the comprehensive list of newly added features and improvements:
-
-## 🆕 Major New Features & Updates
-
-### 1. **MCP (Model Context Protocol) Server Integration**
-- **Sequential Thinking Server**: Full TypeScript implementation for dynamic problem-solving with revision capabilities
-- **Memory Server**: Knowledge graph implementation for persistent memory across sessions
-- Auto-configuration of `.mcp.json` in workspace with backup/restore functionality
-- Custom wrapper scripts for both MCP servers with proper NVM integration
-- Test script (`test-mcp.sh`) to verify MCP server functionality
-
-### 2. **Enhanced Docker & System Management**
-- **Automatic Docker Installation**: Full installer for Ubuntu/Debian, Fedora/RHEL, and Arch/Manjaro
-- **Smart Docker Detection**: 3-tier check (not installed, installed but not running, requires sudo)
-- **Non-root Docker Configuration**: Automatic group management and permission setup
-- **Spinner Progress Indicators**: Visual feedback during long operations
-
-### 3. **Security Enhancements**
-- **Network Firewall**: iptables-based firewall restricting to Anthropic APIs only
-- **Optional Security Flags**:
-  - `--dangerously-skip-permissions`
-  - `--dangerously-enable-sudo`
-  - `--dangerously-disable-firewall`
-- **Copyright Disclaimer Removed**: No more redundant copyright warnings
-
-### 4. **New Profile System**
-- **15 Development Profiles** with detailed package lists
-- **Smart Installation**: Progress indicators for each profile component
-- **Language-Specific Post-Install**: Rust toolchain, Go installation, Node.js tools, Python packages
-- **New Profiles Added**: OpenWRT, embedded, ML, security tools
-
-### 5. **Improved User Experience**
-- **Colorful ASCII Logo**: Enhanced with color codes and better formatting
-- **Color-Coded Output**: Different colors for different message types
-- **First-Run Welcome Message**: Quick start guide and feature overview
-- **Better Help System**: Integrated help showing both ClaudeBox and Claude options
-
-### 6. **Command Improvements**
-- **Profile Command**: List and install multiple profiles in one command
-- **Update Command**: Two-stage update process for Claude CLI
-- **Clean Command**: Now supports `--all` flag for deep cleaning
-- **Rebuild Command**: Complete image reconstruction
-
-### 7. **Technical Improvements**
-- **Persistent Commands**: config, mcp, migrate-installer, update now persist changes
-- **Claude Wrapper**: Filters security flags before passing to Claude
-- **Docker Entrypoint**: Sophisticated startup script handling firewall and sudo
-- **NVM Integration**: Proper Node.js version management
-
-### 8. **File & Directory Management**
-- **New Directories**: `~/.claudebox` for ClaudeBox-specific data
-- **MCP Config Handling**: Smart detection and backup of existing `.mcp.json`
-- **Memory Persistence**: Memory file stored in `~/.claudebox/memory.json`
-
-### 9. **Error Handling & Recovery**
-- **Graceful Degradation**: Falls back appropriately when features unavailable
-- **Trap Handlers**: Restores original `.mcp.json` on exit
-- **Silent Failures**: Handles missing commands without breaking flow
-
-### 10. **Development Profile Enhancements**
-Each profile now includes more comprehensive toolsets:
-- **C/C++**: Added cmocka, lcov, ncurses
-- **Python**: Added pipenv, poetry, jupyterlab
-- **ML**: Full PyTorch, TensorFlow, transformers stack
-- **OpenWRT**: Complete cross-compilation environment with QEMU
-
-Based on this analysis, here's the updated README.md:
-
-```markdown
 # ClaudeBox 🐳
 
 [![Docker](https://img.shields.io/badge/Docker-Required-blue.svg)](https://www.docker.com/)
@@ -312,4 +243,3 @@ Made with ❤️ for developers who love clean, reproducible environments
 
 **Author/Maintainer:** RchGrav  
 **GitHub:** [@RchGrav](https://github.com/RchGrav)
-```
