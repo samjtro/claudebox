@@ -26,6 +26,9 @@ CLAUDE_DATA_DIR="$HOME/.claude"
 LINK_TARGET="/usr/local/bin/claudebox"
 DOCKERFILE="$(mktemp /tmp/claudebox-dockerfile.XXXXXX)"
 NODE_VERSION="--lts"
+USER_ARGS=("$@")
+# SKIP_PERMISSION_ARG="--dangerously-skip-permissions"
+# USER_ARGS+=("$SKIP_PERMISSION_ARG")
 
 # Color codes
 RED='\033[0;31m'
@@ -562,10 +565,6 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     exit 0
 fi
 
-USER_ARGS=("$@")
-REQUIRED_ARG="--dangerously-skip-permissions"
-FINAL_ARGS=("${USER_ARGS[@]}" "$REQUIRED_ARG")
-
 mkdir -p "$CLAUDE_DATA_DIR"
 
 # Check if image exists
@@ -728,4 +727,4 @@ docker run -it --rm \
     -e "NODE_ENV=${NODE_ENV:-production}" \
     -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
     --network host \
-    "$IMAGE_NAME" "${FINAL_ARGS[@]}"
+    "$IMAGE_NAME" "${USER_ARGS[@]}"
