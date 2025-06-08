@@ -27,8 +27,9 @@ LINK_TARGET="/usr/local/bin/claudebox"
 DOCKERFILE="$(mktemp /tmp/claudebox-dockerfile.XXXXXX)"
 NODE_VERSION="--lts"
 USER_ARGS=("$@")
-# SKIP_PERMISSION_ARG="--dangerously-skip-permissions"
-# USER_ARGS+=("$SKIP_PERMISSION_ARG")
+USER_ARGS+=("--dangerously-skip-permissions")
+# USER_ARGS+=("--dangerously-enable-sudo")
+USER_ARGS+=("--dangerously-disable-firewall")
 
 # Color codes
 RED='\033[0;31m'
@@ -37,6 +38,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
+WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
 check_docker() {
@@ -59,11 +61,11 @@ check_docker() {
 
 # Function to install Docker
 install_docker() {
-    echo -e "${YELLOW}🐳 Docker is not installed.${NC}"
+    echo -e "${YELLOW}Docker is not installed.${NC}"
     echo -e "${CYAN}Would you like to install Docker now? (y/n)${NC}"
     read -r response
     if [[ ! "$response" =~ ^[Yy]$ ]]; then
-        echo -e "${RED}❌ Docker is required for ClaudeBox. Please install Docker and try again.${NC}"
+        echo -e "${RED}Docker is required for ClaudeBox. Please install Docker and try again.${NC}"
         echo -e "${YELLOW}Visit: https://docs.docker.com/engine/install/${NC}"
         exit 1
     fi
@@ -81,7 +83,7 @@ install_docker() {
 
     case $OS in
         ubuntu|debian)
-            echo -e "${YELLOW}🔐 Installing Docker requires sudo privileges...${NC}"
+            echo -e "${YELLOW}Installing Docker requires sudo privileges...${NC}"
 
            # Install prerequisites
             sudo apt-get update
@@ -133,7 +135,7 @@ install_docker() {
             ;;
     esac
 
-    echo -e "${GREEN}✅ Docker installed successfully!${NC}"
+    echo -e "${GREEN}Docker installed successfully!${NC}"
 
     # Now configure for non-root usage
     configure_docker_nonroot
@@ -280,10 +282,24 @@ PROFILE_DESCRIPTIONS[security]="Security Tools (network analysis, penetration te
 PROFILES[ml]="python3-pip python3-dev python3-venv build-essential cmake"
 PROFILE_DESCRIPTIONS[ml]="Machine Learning (base tools, Python libs installed separately)"
 
+# Spinner function
+show_spinner() {
+	local pid=$1
+	local msg=$2
+	local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+	local i=0
+	echo -n "$msg "
+	while kill -0 $pid 2>/dev/null; do
+		printf "\b%s" "${spin:i++%${#spin}:1}"
+		sleep 0.1
+	done
+	echo -e "\b${GREEN}✓${NC}"
+}
+
 if [[ "${1:-}" == "profile" ]]; then
     shift
     if [[ $# -eq 0 ]]; then
-        echo -e "${CYAN}🎯 Available Profiles:${NC}"
+        echo -e "${CYAN}Available Profiles:${NC}"
         echo
         for profile in $(printf '%s\n' "${!PROFILE_DESCRIPTIONS[@]}" | sort); do
             echo -e "  ${GREEN}$profile${NC} - ${PROFILE_DESCRIPTIONS[$profile]}"
@@ -303,7 +319,7 @@ if [[ "${1:-}" == "profile" ]]; then
             PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL ${PROFILES[$profile]}"
             SELECTED_PROFILES+=("$profile")
         else
-            echo -e "${RED}❌ Unknown profile: $profile${NC}"
+            echo -e "${RED}Unknown profile: $profile${NC}"
             echo -e "${YELLOW}Run 'claudebox profile' to see available profiles${NC}"
             exit 1
         fi
@@ -314,20 +330,6 @@ if [[ "${1:-}" == "profile" ]]; then
     # Create temporary container
     TEMP_CONTAINER=$(docker create "$IMAGE_NAME" sleep infinity)
     docker start "$TEMP_CONTAINER" >/dev/null
-
-    # Spinner function
-    show_spinner() {
-        local pid=$1
-        local msg=$2
-        local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-        local i=0
-        echo -n "$msg "
-        while kill -0 $pid 2>/dev/null; do
-            printf "\b%s" "${spin:i++%${#spin}:1}"
-            sleep 0.1
-        done
-        echo -e "\b${GREEN}✓${NC}"
-    }
 
     # Update package lists
     docker exec -u root "$TEMP_CONTAINER" apt-get update -qq >/dev/null 2>&1 &
@@ -353,9 +355,16 @@ if [[ "${1:-}" == "profile" ]]; then
                 ;;
             go)
                 docker exec -u root "$TEMP_CONTAINER" bash -c "
-                    wget -q https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-                    tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
-                    rm go1.21.5.linux-amd64.tar.gz
+                    ARCH=\$(dpkg --print-architecture)
+                    case \$ARCH in
+                        amd64) GOARCH=amd64 ;;
+                        arm64|aarch64) GOARCH=arm64 ;;
+                        armhf) GOARCH=armv6l ;;
+                        *) echo 'Unsupported architecture for Go'; exit 1 ;;
+                    esac
+                    wget -q https://go.dev/dl/go1.21.5.linux-\${GOARCH}.tar.gz
+                    tar -C /usr/local -xzf go1.21.5.linux-\${GOARCH}.tar.gz
+                    rm go1.21.5.linux-\${GOARCH}.tar.gz
                     echo 'export PATH=/usr/local/go/bin:\$PATH' >> /etc/profile
                 " >/dev/null 2>&1 &
                 show_spinner $! "Installing Go..."
@@ -490,7 +499,7 @@ if [[ "${1:-}" =~ ^($PERSISTENT_COMMANDS)$ ]]; then
         docker start "$TEMP_CONTAINER" >/dev/null
 
         docker exec -it -u "$DOCKER_USER" "$TEMP_CONTAINER" \
-            /home/claude/claude-wrapper "$@"
+            /home/$DOCKER_USER/claude-wrapper "$@"
         docker commit "$TEMP_CONTAINER" "$IMAGE_NAME" >/dev/null
         docker rm -f "$TEMP_CONTAINER" >/dev/null
     fi
@@ -500,12 +509,20 @@ fi
 
 if [[ "${1:-}" == "shell" ]]; then
     docker run -it --rm \
+        -u "$DOCKER_USER" \
         -w /workspace \
         -v "$PROJECT_DIR":/workspace \
         -v "$CLAUDE_DATA_DIR":/home/$DOCKER_USER/.claude \
-        -v "$HOME/.npmrc:/home/$DOCKER_USER/.npmrc:ro" \
-        -v "$HOME/.ssh:/home/$DOCKER_USER/.ssh:ro" \
-        --entrypoint bash \
+        -v "$HOME/.claudebox":/home/$DOCKER_USER/.claudebox \
+        -v "$HOME/.config/claude":/home/$DOCKER_USER/.config/claude \
+        -v "$HOME/.claude.json":/home/$DOCKER_USER/.claude.json \
+        -v "$HOME/.npmrc":/home/$DOCKER_USER/.npmrc:ro \
+        -v "$HOME/.ssh":/home/$DOCKER_USER/.ssh:ro \
+        -e "NODE_ENV=${NODE_ENV:-production}" \
+        -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
+        --cap-add NET_ADMIN \
+        --cap-add NET_RAW \
+        --entrypoint /bin/bash \
         "$IMAGE_NAME"
     exit 0
 fi
@@ -513,7 +530,7 @@ fi
 if [[ "${1:-}" == "clean" ]]; then
     shift
     if [[ "${1:-}" == "--all" || "${1:-}" == "-a" ]]; then
-        echo -e "${YELLOW}🧹 Deep cleaning ClaudeBox and build cache...${NC}"
+        echo -e "${YELLOW}Deep cleaning ClaudeBox and build cache...${NC}"
         docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
         docker builder prune -af  # -a removes ALL build cache
         echo -e "${GREEN}Deep clean complete!${NC}"
@@ -527,35 +544,23 @@ if [[ "${1:-}" == "clean" ]]; then
     exit 0
 fi
 
-if [[ "${1:-}" == "help" ]]; then
-    # claudebox help -> show our help
-    echo -e "${CYAN}ClaudeBox - The Ultimate Claude Code Development Environment${NC}"
-    echo
-    echo -e "${YELLOW}Usage:${NC}"
-    echo -e "  claudebox [options]              Launch Claude CLI"
-    echo -e "  claudebox profile [names...]     Install language profiles"
-    echo -e "  claudebox install <packages>     Install apt packages"
-    echo -e "  claudebox shell                  Open bash shell in container"
-    echo -e "  claudebox info                   Show ClaudeBox information"
-    echo -e "  claudebox update                 Update Claude CLI"
-    echo -e "  claudebox clean                  Remove ClaudeBox image"
-    echo -e "  claudebox rebuild                Rebuild Docker image"
-    echo -e "  claudebox help                   Show this help message"
-    echo
-    echo -e "${YELLOW}Examples:${NC}"
-    echo -e "  claudebox --model opus -c"
-    echo -e "  claudebox profile c python"
-    echo
-    exit 0
-fi
-
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     # --help or -h -> show Claude's help
     if docker image inspect "$IMAGE_NAME" &>/dev/null; then
         docker run --rm "$IMAGE_NAME" --help | sed '1s/claude/claudebox/g'
         echo
-        echo -e "${CYAN}For ClaudeBox-specific help, use: claudebox help${NC}"
-    else
+	    echo -e "${WHITE}Added Options:${NC}"
+	    echo -e "${CYAN}  --dangerously-enable-sudo       ${WHITE}Enable sudo without password"
+        echo -e "${CYAN}  --dangerously-disable-firewall  ${WHITE}Disable network restrictions"
+	    echo
+        echo -e "${WHITE}Added Commands:"
+        echo -e "  profile [names...]              Install language profiles"
+        echo -e "  install <packages>              Install apt packages"
+        echo -e "  shell                           Open bash shell in container"
+        echo -e "  info                            Show ClaudeBox information"
+        echo -e "  clean                           Remove ClaudeBox image"
+        echo -e "  rebuild                         Rebuild Docker image${NC}"
+	else
         echo -e "${CYAN}ClaudeBox - Claude Code Docker Environment${NC}"
         echo
         echo -e "${YELLOW}First run setup required!${NC}"
@@ -565,7 +570,74 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     exit 0
 fi
 
+if [[ "${1:-}" == "rebuild" ]]; then
+    docker rmi -f "$IMAGE_NAME" 2>/dev/null || true &
+    show_spinner $! "Wiping ClaudeBox Image Data..."
+fi
+
 mkdir -p "$CLAUDE_DATA_DIR"
+mkdir -p "$HOME/.claudebox"
+
+# Handle MCP config in workspace
+MCP_BACKUP=""
+EXPECTED_THINKING="/home/$DOCKER_USER/mcp-servers/run-thinking.sh"
+EXPECTED_MEMORY="/home/$DOCKER_USER/mcp-servers/run-memory.sh"
+
+if [[ -f "$PROJECT_DIR/.mcp.json" ]]; then
+    # Check if it's already configured correctly
+    THINKING_CMD=$(jq -r '.mcpServers.thinking.command // ""' "$PROJECT_DIR/.mcp.json" 2>/dev/null || echo "")
+    MEMORY_CMD=$(jq -r '.mcpServers.memory.command // ""' "$PROJECT_DIR/.mcp.json" 2>/dev/null || echo "")
+    
+    if [[ "$THINKING_CMD" != "$EXPECTED_THINKING" ]] || [[ "$MEMORY_CMD" != "$EXPECTED_MEMORY" ]]; then
+        # Different config - back it up and replace
+        MCP_BACKUP="$PROJECT_DIR/.mcp.json.claudebox-backup"
+        cp "$PROJECT_DIR/.mcp.json" "$MCP_BACKUP"
+        echo -e "${BLUE}Backed up existing .mcp.json${NC}"
+        
+        # Create our MCP config
+        cat > "$PROJECT_DIR/.mcp.json" << EOF
+{
+  "mcpServers": {
+    "thinking": {
+      "command": "/home/$DOCKER_USER/mcp-servers/run-thinking.sh",
+      "args": []
+    },
+    "memory": {
+      "command": "/home/$DOCKER_USER/mcp-servers/run-memory.sh",
+      "args": [],
+      "env": {
+        "MEMORY_FILE_PATH": "/home/$DOCKER_USER/.claudebox/memory.json"
+      }
+    }
+  }
+}
+EOF
+        
+        # Set up trap to restore on exit
+        trap 'mv "$MCP_BACKUP" "$PROJECT_DIR/.mcp.json" && echo -e "${BLUE}Restored original .mcp.json${NC}"' EXIT
+    fi
+    # else: already correct, do nothing
+else
+    # No file exists - create it
+    cat > "$PROJECT_DIR/.mcp.json" << EOF
+{
+  "mcpServers": {
+    "thinking": {
+      "command": "/home/$DOCKER_USER/mcp-servers/run-thinking.sh",
+      "args": []
+    },
+    "memory": {
+      "command": "/home/$DOCKER_USER/mcp-servers/run-memory.sh",
+      "args": [],
+      "env": {
+        "MEMORY_FILE_PATH": "/home/$DOCKER_USER/.claudebox/memory.json"
+      }
+    }
+  }
+}
+EOF
+    echo -e "${GREEN}Created .mcp.json with ClaudeBox MCP servers${NC}"
+fi
 
 # Check if image exists
 first_time=false
@@ -588,14 +660,12 @@ RUN echo '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d && \
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update -qq && \
     apt-get install -y -qq \
-    curl gnupg ca-certificates sudo git \
+    curl gnupg ca-certificates sudo git iptables ipset \
     && apt-get clean
 
-# Create user with matching UID/GID (without sudo restrictions)
+# Create user with matching UID/GID
 RUN groupadd -g $GROUP_ID $USERNAME || true \
-    && useradd -m -u $USER_ID -g $GROUP_ID -s /bin/bash $USERNAME \
-    && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME
+    && useradd -m -u $USER_ID -g $GROUP_ID -s /bin/bash $USERNAME
 
 # Install basic development tools
 RUN export DEBIAN_FRONTEND=noninteractive && \
@@ -613,9 +683,8 @@ WORKDIR /home/$USERNAME
 ENV NVM_DIR="/home/$USERNAME/.nvm"
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 
-# Install Node.js using NVM (configurable version)
 RUN bash -c "source $NVM_DIR/nvm.sh && \
-    if [[ '$NODE_VERSION' == '--lts' ]]; then \
+    if [[ \"$NODE_VERSION\" == '--lts' ]]; then \
         nvm install --lts && \
         nvm alias default 'lts/*'; \
     else \
@@ -634,111 +703,1085 @@ RUN bash -c "source $NVM_DIR/nvm.sh && \
     nvm use default && \
     npm install -g @anthropic-ai/claude-code"
 
-# Verify installation
+# Install MCP SDK dependencies
+RUN bash -c "source $NVM_DIR/nvm.sh && \
+    nvm use default && \
+    npm install @modelcontextprotocol/sdk chalk"
+
+# Create proper MCP server packages with TypeScript compilation
+RUN mkdir -p ~/mcp-servers/thinking ~/mcp-servers/memory
+
+# Create package.json for thinking server
+RUN cat > ~/mcp-servers/thinking/package.json << 'PACKAGEEOF'
+{
+  "name": "@modelcontextprotocol/server-sequential-thinking",
+  "version": "0.6.2",
+  "description": "MCP server for sequential thinking and problem solving",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "mcp-server-sequential-thinking": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc && chmod +x dist/*.js",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "0.5.0",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.3.3"
+  }
+}
+PACKAGEEOF
+
+# Create tsconfig.json for thinking server
+RUN cat > ~/mcp-servers/thinking/tsconfig.json << 'TSCONFIGEOF'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["./**/*.ts"]
+}
+TSCONFIGEOF
+
+# Create the TypeScript source file for thinking server
+RUN cat > ~/mcp-servers/thinking/index.ts << 'THINKEOF'
+#!/usr/bin/env node
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  Tool,
+} from "@modelcontextprotocol/sdk/types.js";
+import chalk from 'chalk';
+
+interface ThoughtData {
+  thought: string;
+  thoughtNumber: number;
+  totalThoughts: number;
+  isRevision?: boolean;
+  revisesThought?: number;
+  branchFromThought?: number;
+  branchId?: string;
+  needsMoreThoughts?: boolean;
+  nextThoughtNeeded: boolean;
+}
+
+class SequentialThinkingServer {
+  private thoughtHistory: ThoughtData[] = [];
+  private branches: Record<string, ThoughtData[]> = {};
+
+  private validateThoughtData(input: unknown): ThoughtData {
+    const data = input as Record<string, unknown>;
+
+    if (!data.thought || typeof data.thought !== 'string') {
+      throw new Error('Invalid thought: must be a string');
+    }
+    if (!data.thoughtNumber || typeof data.thoughtNumber !== 'number') {
+      throw new Error('Invalid thoughtNumber: must be a number');
+    }
+    if (!data.totalThoughts || typeof data.totalThoughts !== 'number') {
+      throw new Error('Invalid totalThoughts: must be a number');
+    }
+    if (typeof data.nextThoughtNeeded !== 'boolean') {
+      throw new Error('Invalid nextThoughtNeeded: must be a boolean');
+    }
+
+    return {
+      thought: data.thought,
+      thoughtNumber: data.thoughtNumber,
+      totalThoughts: data.totalThoughts,
+      nextThoughtNeeded: data.nextThoughtNeeded,
+      isRevision: data.isRevision as boolean | undefined,
+      revisesThought: data.revisesThought as number | undefined,
+      branchFromThought: data.branchFromThought as number | undefined,
+      branchId: data.branchId as string | undefined,
+      needsMoreThoughts: data.needsMoreThoughts as boolean | undefined,
+    };
+  }
+
+  private formatThought(thoughtData: ThoughtData): string {
+    const { thoughtNumber, totalThoughts, thought, isRevision, revisesThought, branchFromThought, branchId } = thoughtData;
+
+    let prefix = '';
+    let context = '';
+
+    if (isRevision) {
+      prefix = chalk.yellow('🔄 Revision');
+      context = ` (revising thought ${revisesThought})`;
+    } else if (branchFromThought) {
+      prefix = chalk.green('🌿 Branch');
+      context = ` (from thought ${branchFromThought}, ID: ${branchId})`;
+    } else {
+      prefix = chalk.blue('💭 Thought');
+      context = '';
+    }
+
+    const header = `${prefix} ${thoughtNumber}/${totalThoughts}${context}`;
+    const border = '─'.repeat(Math.max(header.length, thought.length) + 4);
+
+    return `
+┌${border}┐
+│ ${header} │
+├${border}┤
+│ ${thought.padEnd(border.length - 2)} │
+└${border}┘`;
+  }
+
+  public processThought(input: unknown): { content: Array<{ type: string; text: string }>; isError?: boolean } {
+    try {
+      const validatedInput = this.validateThoughtData(input);
+
+      if (validatedInput.thoughtNumber > validatedInput.totalThoughts) {
+        validatedInput.totalThoughts = validatedInput.thoughtNumber;
+      }
+
+      this.thoughtHistory.push(validatedInput);
+
+      if (validatedInput.branchFromThought && validatedInput.branchId) {
+        if (!this.branches[validatedInput.branchId]) {
+          this.branches[validatedInput.branchId] = [];
+        }
+        this.branches[validatedInput.branchId].push(validatedInput);
+      }
+
+      const formattedThought = this.formatThought(validatedInput);
+      console.error(formattedThought);
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            thoughtNumber: validatedInput.thoughtNumber,
+            totalThoughts: validatedInput.totalThoughts,
+            nextThoughtNeeded: validatedInput.nextThoughtNeeded,
+            branches: Object.keys(this.branches),
+            thoughtHistoryLength: this.thoughtHistory.length
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+            status: 'failed'
+          }, null, 2)
+        }],
+        isError: true
+      };
+    }
+  }
+}
+
+const SEQUENTIAL_THINKING_TOOL: Tool = {
+  name: "sequentialthinking",
+  description: `A detailed tool for dynamic and reflective problem-solving through thoughts.
+This tool helps analyze problems through a flexible thinking process that can adapt and evolve.
+Each thought can build on, question, or revise previous insights as understanding deepens.
+
+When to use this tool:
+- Breaking down complex problems into steps
+- Planning and design with room for revision
+- Analysis that might need course correction
+- Problems where the full scope might not be clear initially
+- Problems that require a multi-step solution
+- Tasks that need to maintain context over multiple steps
+- Situations where irrelevant information needs to be filtered out
+
+Key features:
+- You can adjust total_thoughts up or down as you progress
+- You can question or revise previous thoughts
+- You can add more thoughts even after reaching what seemed like the end
+- You can express uncertainty and explore alternative approaches
+- Not every thought needs to build linearly - you can branch or backtrack
+- Generates a solution hypothesis
+- Verifies the hypothesis based on the Chain of Thought steps
+- Repeats the process until satisfied
+- Provides a correct answer
+
+Parameters explained:
+- thought: Your current thinking step, which can include:
+  * Regular analytical steps
+  * Revisions of previous thoughts
+  * Questions about previous decisions
+  * Realizations about needing more analysis
+  * Changes in approach
+  * Hypothesis generation
+  * Hypothesis verification
+- next_thought_needed: True if you need more thinking, even if at what seemed like the end
+- thought_number: Current number in sequence (can go beyond initial total if needed)
+- total_thoughts: Current estimate of thoughts needed (can be adjusted up/down)
+- is_revision: A boolean indicating if this thought revises previous thinking
+- revises_thought: If is_revision is true, which thought number is being reconsidered
+- branch_from_thought: If branching, which thought number is the branching point
+- branch_id: Identifier for the current branch (if any)
+- needs_more_thoughts: If reaching end but realizing more thoughts needed
+
+You should:
+1. Start with an initial estimate of needed thoughts, but be ready to adjust
+2. Feel free to question or revise previous thoughts
+3. Don't hesitate to add more thoughts if needed, even at the "end"
+4. Express uncertainty when present
+5. Mark thoughts that revise previous thinking or branch into new paths
+6. Ignore information that is irrelevant to the current step
+7. Generate a solution hypothesis when appropriate
+8. Verify the hypothesis based on the Chain of Thought steps
+9. Repeat the process until satisfied with the solution
+10. Provide a single, ideally correct answer as the final output
+11. Only set next_thought_needed to false when truly done and a satisfactory answer is reached`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      thought: {
+        type: "string",
+        description: "Your current thinking step"
+      },
+      nextThoughtNeeded: {
+        type: "boolean",
+        description: "Whether another thought step is needed"
+      },
+      thoughtNumber: {
+        type: "integer",
+        description: "Current thought number",
+        minimum: 1
+      },
+      totalThoughts: {
+        type: "integer",
+        description: "Estimated total thoughts needed",
+        minimum: 1
+      },
+      isRevision: {
+        type: "boolean",
+        description: "Whether this revises previous thinking"
+      },
+      revisesThought: {
+        type: "integer",
+        description: "Which thought is being reconsidered",
+        minimum: 1
+      },
+      branchFromThought: {
+        type: "integer",
+        description: "Branching point thought number",
+        minimum: 1
+      },
+      branchId: {
+        type: "string",
+        description: "Branch identifier"
+      },
+      needsMoreThoughts: {
+        type: "boolean",
+        description: "If more thoughts are needed"
+      }
+    },
+    required: ["thought", "nextThoughtNeeded", "thoughtNumber", "totalThoughts"]
+  }
+};
+
+const server = new Server(
+  {
+    name: "sequential-thinking-server",
+    version: "0.2.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
+
+const thinkingServer = new SequentialThinkingServer();
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [SEQUENTIAL_THINKING_TOOL],
+}));
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  if (request.params.name === "sequentialthinking") {
+    return thinkingServer.processThought(request.params.arguments);
+  }
+
+  return {
+    content: [{
+      type: "text",
+      text: `Unknown tool: ${request.params.name}`
+    }],
+    isError: true
+  };
+});
+
+async function runServer() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("Sequential Thinking MCP Server running on stdio");
+}
+
+runServer().catch((error) => {
+  console.error("Fatal error running server:", error);
+  process.exit(1);
+});
+THINKEOF
+
+# Create package.json for memory server
+RUN cat > ~/mcp-servers/memory/package.json << 'PACKAGEEOF'
+{
+  "name": "@modelcontextprotocol/server-memory",
+  "version": "0.6.3",
+  "description": "MCP server for enabling memory for Claude through a knowledge graph",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "mcp-server-memory": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc && chmod +x dist/*.js",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.6.2"
+  }
+}
+PACKAGEEOF
+
+# Create tsconfig.json for memory server
+RUN cat > ~/mcp-servers/memory/tsconfig.json << 'TSCONFIGEOF'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["./**/*.ts"]
+}
+TSCONFIGEOF
+
+# Create the TypeScript source file for memory server
+RUN cat > ~/mcp-servers/memory/index.ts << 'MEMORYEOF'
+#!/usr/bin/env node
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import { promises as fs } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const defaultMemoryPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'memory.json');
+
+const MEMORY_FILE_PATH = process.env.MEMORY_FILE_PATH
+  ? path.isAbsolute(process.env.MEMORY_FILE_PATH)
+    ? process.env.MEMORY_FILE_PATH
+    : path.join(path.dirname(fileURLToPath(import.meta.url)), process.env.MEMORY_FILE_PATH)
+  : defaultMemoryPath;
+
+interface Entity {
+  name: string;
+  entityType: string;
+  observations: string[];
+}
+
+interface Relation {
+  from: string;
+  to: string;
+  relationType: string;
+}
+
+interface KnowledgeGraph {
+  entities: Entity[];
+  relations: Relation[];
+}
+
+class KnowledgeGraphManager {
+  private async loadGraph(): Promise<KnowledgeGraph> {
+    try {
+      const data = await fs.readFile(MEMORY_FILE_PATH, "utf-8");
+      const lines = data.split("\n").filter(line => line.trim() !== "");
+      return lines.reduce((graph: KnowledgeGraph, line) => {
+        const item = JSON.parse(line);
+        if (item.type === "entity") graph.entities.push(item as Entity);
+        if (item.type === "relation") graph.relations.push(item as Relation);
+        return graph;
+      }, { entities: [], relations: [] });
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && (error as any).code === "ENOENT") {
+        return { entities: [], relations: [] };
+      }
+      throw error;
+    }
+  }
+
+  private async saveGraph(graph: KnowledgeGraph): Promise<void> {
+    const lines = [
+      ...graph.entities.map(e => JSON.stringify({ type: "entity", ...e })),
+      ...graph.relations.map(r => JSON.stringify({ type: "relation", ...r })),
+    ];
+    await fs.writeFile(MEMORY_FILE_PATH, lines.join("\n"));
+  }
+
+  async createEntities(entities: Entity[]): Promise<Entity[]> {
+    const graph = await this.loadGraph();
+    const newEntities = entities.filter(e => !graph.entities.some(existingEntity => existingEntity.name === e.name));
+    graph.entities.push(...newEntities);
+    await this.saveGraph(graph);
+    return newEntities;
+  }
+
+  async createRelations(relations: Relation[]): Promise<Relation[]> {
+    const graph = await this.loadGraph();
+    const newRelations = relations.filter(r => !graph.relations.some(existingRelation =>
+      existingRelation.from === r.from &&
+      existingRelation.to === r.to &&
+      existingRelation.relationType === r.relationType
+    ));
+    graph.relations.push(...newRelations);
+    await this.saveGraph(graph);
+    return newRelations;
+  }
+
+  async addObservations(observations: { entityName: string; contents: string[] }[]): Promise<{ entityName: string; addedObservations: string[] }[]> {
+    const graph = await this.loadGraph();
+    const results = observations.map(o => {
+      const entity = graph.entities.find(e => e.name === o.entityName);
+      if (!entity) {
+        throw new Error(`Entity with name ${o.entityName} not found`);
+      }
+      const newObservations = o.contents.filter(content => !entity.observations.includes(content));
+      entity.observations.push(...newObservations);
+      return { entityName: o.entityName, addedObservations: newObservations };
+    });
+    await this.saveGraph(graph);
+    return results;
+  }
+
+  async deleteEntities(entityNames: string[]): Promise<void> {
+    const graph = await this.loadGraph();
+    graph.entities = graph.entities.filter(e => !entityNames.includes(e.name));
+    graph.relations = graph.relations.filter(r => !entityNames.includes(r.from) && !entityNames.includes(r.to));
+    await this.saveGraph(graph);
+  }
+
+  async deleteObservations(deletions: { entityName: string; observations: string[] }[]): Promise<void> {
+    const graph = await this.loadGraph();
+    deletions.forEach(d => {
+      const entity = graph.entities.find(e => e.name === d.entityName);
+      if (entity) {
+        entity.observations = entity.observations.filter(o => !d.observations.includes(o));
+      }
+    });
+    await this.saveGraph(graph);
+  }
+
+  async deleteRelations(relations: Relation[]): Promise<void> {
+    const graph = await this.loadGraph();
+    graph.relations = graph.relations.filter(r => !relations.some(delRelation =>
+      r.from === delRelation.from &&
+      r.to === delRelation.to &&
+      r.relationType === delRelation.relationType
+    ));
+    await this.saveGraph(graph);
+  }
+
+  async readGraph(): Promise<KnowledgeGraph> {
+    return this.loadGraph();
+  }
+
+  async searchNodes(query: string): Promise<KnowledgeGraph> {
+    const graph = await this.loadGraph();
+
+    const filteredEntities = graph.entities.filter(e =>
+      e.name.toLowerCase().includes(query.toLowerCase()) ||
+      e.entityType.toLowerCase().includes(query.toLowerCase()) ||
+      e.observations.some(o => o.toLowerCase().includes(query.toLowerCase()))
+    );
+
+    const filteredEntityNames = new Set(filteredEntities.map(e => e.name));
+
+    const filteredRelations = graph.relations.filter(r =>
+      filteredEntityNames.has(r.from) && filteredEntityNames.has(r.to)
+    );
+
+    const filteredGraph: KnowledgeGraph = {
+      entities: filteredEntities,
+      relations: filteredRelations,
+    };
+
+    return filteredGraph;
+  }
+
+  async openNodes(names: string[]): Promise<KnowledgeGraph> {
+    const graph = await this.loadGraph();
+
+    const filteredEntities = graph.entities.filter(e => names.includes(e.name));
+
+    const filteredEntityNames = new Set(filteredEntities.map(e => e.name));
+
+    const filteredRelations = graph.relations.filter(r =>
+      filteredEntityNames.has(r.from) && filteredEntityNames.has(r.to)
+    );
+
+    const filteredGraph: KnowledgeGraph = {
+      entities: filteredEntities,
+      relations: filteredRelations,
+    };
+
+    return filteredGraph;
+  }
+}
+
+const knowledgeGraphManager = new KnowledgeGraphManager();
+
+const server = new Server({
+  name: "memory-server",
+  version: "0.6.3",
+}, {
+  capabilities: {
+    tools: {},
+  },
+});
+
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {
+        name: "create_entities",
+        description: "Create multiple new entities in the knowledge graph",
+        inputSchema: {
+          type: "object",
+          properties: {
+            entities: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "The name of the entity" },
+                  entityType: { type: "string", description: "The type of the entity" },
+                  observations: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "An array of observation contents associated with the entity"
+                  },
+                },
+                required: ["name", "entityType", "observations"],
+              },
+            },
+          },
+          required: ["entities"],
+        },
+      },
+      {
+        name: "create_relations",
+        description: "Create multiple new relations between entities in the knowledge graph. Relations should be in active voice",
+        inputSchema: {
+          type: "object",
+          properties: {
+            relations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  from: { type: "string", description: "The name of the entity where the relation starts" },
+                  to: { type: "string", description: "The name of the entity where the relation ends" },
+                  relationType: { type: "string", description: "The type of the relation" },
+                },
+                required: ["from", "to", "relationType"],
+              },
+            },
+          },
+          required: ["relations"],
+        },
+      },
+      {
+        name: "add_observations",
+        description: "Add new observations to existing entities in the knowledge graph",
+        inputSchema: {
+          type: "object",
+          properties: {
+            observations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  entityName: { type: "string", description: "The name of the entity to add the observations to" },
+                  contents: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "An array of observation contents to add"
+                  },
+                },
+                required: ["entityName", "contents"],
+              },
+            },
+          },
+          required: ["observations"],
+        },
+      },
+      {
+        name: "delete_entities",
+        description: "Delete multiple entities and their associated relations from the knowledge graph",
+        inputSchema: {
+          type: "object",
+          properties: {
+            entityNames: {
+              type: "array",
+              items: { type: "string" },
+              description: "An array of entity names to delete"
+            },
+          },
+          required: ["entityNames"],
+        },
+      },
+      {
+        name: "delete_observations",
+        description: "Delete specific observations from entities in the knowledge graph",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deletions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  entityName: { type: "string", description: "The name of the entity containing the observations" },
+                  observations: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "An array of observations to delete"
+                  },
+                },
+                required: ["entityName", "observations"],
+              },
+            },
+          },
+          required: ["deletions"],
+        },
+      },
+      {
+        name: "delete_relations",
+        description: "Delete multiple relations from the knowledge graph",
+        inputSchema: {
+          type: "object",
+          properties: {
+            relations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  from: { type: "string", description: "The name of the entity where the relation starts" },
+                  to: { type: "string", description: "The name of the entity where the relation ends" },
+                  relationType: { type: "string", description: "The type of the relation" },
+                },
+                required: ["from", "to", "relationType"],
+              },
+              description: "An array of relations to delete"
+            },
+          },
+          required: ["relations"],
+        },
+      },
+      {
+        name: "read_graph",
+        description: "Read the entire knowledge graph",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "search_nodes",
+        description: "Search for nodes in the knowledge graph based on a query",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "The search query to match against entity names, types, and observation content" },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        name: "open_nodes",
+        description: "Open specific nodes in the knowledge graph by their names",
+        inputSchema: {
+          type: "object",
+          properties: {
+            names: {
+              type: "array",
+              items: { type: "string" },
+              description: "An array of entity names to retrieve",
+            },
+          },
+          required: ["names"],
+        },
+      },
+    ],
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  if (!args) {
+    throw new Error(`No arguments provided for tool: ${name}`);
+  }
+
+  switch (name) {
+    case "create_entities":
+      return { content: [{ type: "text", text: JSON.stringify(await knowledgeGraphManager.createEntities(args.entities as Entity[]), null, 2) }] };
+    case "create_relations":
+      return { content: [{ type: "text", text: JSON.stringify(await knowledgeGraphManager.createRelations(args.relations as Relation[]), null, 2) }] };
+    case "add_observations":
+      return { content: [{ type: "text", text: JSON.stringify(await knowledgeGraphManager.addObservations(args.observations as { entityName: string; contents: string[] }[]), null, 2) }] };
+    case "delete_entities":
+      await knowledgeGraphManager.deleteEntities(args.entityNames as string[]);
+      return { content: [{ type: "text", text: "Entities deleted successfully" }] };
+    case "delete_observations":
+      await knowledgeGraphManager.deleteObservations(args.deletions as { entityName: string; observations: string[] }[]);
+      return { content: [{ type: "text", text: "Observations deleted successfully" }] };
+    case "delete_relations":
+      await knowledgeGraphManager.deleteRelations(args.relations as Relation[]);
+      return { content: [{ type: "text", text: "Relations deleted successfully" }] };
+    case "read_graph":
+      return { content: [{ type: "text", text: JSON.stringify(await knowledgeGraphManager.readGraph(), null, 2) }] };
+    case "search_nodes":
+      return { content: [{ type: "text", text: JSON.stringify(await knowledgeGraphManager.searchNodes(args.query as string), null, 2) }] };
+    case "open_nodes":
+      return { content: [{ type: "text", text: JSON.stringify(await knowledgeGraphManager.openNodes(args.names as string[]), null, 2) }] };
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+});
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("Knowledge Graph MCP Server running on stdio");
+}
+
+main().catch((error) => {
+  console.error("Fatal error in main():", error);
+  process.exit(1);
+});
+MEMORYEOF
+
+RUN bash -c "source $NVM_DIR/nvm.sh && \
+    cd ~/mcp-servers/thinking && \
+    npm install && \
+    npm run build && \
+    cd ~/mcp-servers/memory && \
+    npm install && \
+    npm run build"
+
+RUN cat > ~/mcp-servers/run-thinking.sh << 'WRAPPEREOF'
+#!/bin/bash
+echo "Starting thinking server..." >&2
+echo "PATH: $PATH" >&2
+echo "Node version:" >&2
+node --version >&2
+
+source $HOME/.nvm/nvm.sh
+nvm use default >/dev/null 2>&1
+
+echo "After NVM setup:" >&2
+which node >&2
+node --version >&2
+
+cd $HOME/mcp-servers/thinking
+exec node $HOME/mcp-servers/thinking/dist/index.js "$@"
+WRAPPEREOF
+
+RUN cat > ~/mcp-servers/run-memory.sh << 'WRAPPEREOF'
+#!/bin/bash
+echo "Starting memory server..." >&2
+echo "PATH: $PATH" >&2
+echo "Node version:" >&2
+node --version >&2
+
+source $HOME/.nvm/nvm.sh
+nvm use default >/dev/null 2>&1
+
+echo "After NVM setup:" >&2
+which node >&2
+node --version >&2
+
+cd $HOME/mcp-servers/memory
+exec node $HOME/mcp-servers/memory/dist/index.js "$@"
+WRAPPEREOF
+
+RUN chmod +x ~/mcp-servers/thinking/dist/*.js ~/mcp-servers/memory/dist/*.js ~/mcp-servers/run-thinking.sh ~/mcp-servers/run-memory.sh
+
+# Add this to the Dockerfile
+RUN cat > ~/test-mcp.sh << 'TESTEOF'
+#!/bin/bash
+echo "Testing MCP servers..."
+
+# Test thinking server
+echo "Testing thinking server..."
+if timeout 2 $HOME/mcp-servers/run-thinking.sh 2>&1 | grep -q "Sequential Thinking MCP Server running on stdio"; then
+    echo "✓ Thinking server started successfully"
+else
+    echo "✗ Thinking server failed to start"
+fi
+
+
+# Test memory server
+echo "Testing memory server..."
+if timeout 2 $HOME/mcp-servers/run-memory.sh 2>&1 | grep -q "Knowledge Graph MCP Server running on stdio"; then
+    echo "✓ Memory server started successfully"
+else
+    echo "✗ Memory server failed to start"
+fi
+
+# Check Claude config
+echo "Claude MCP config:"
+cat ~/.config/claude/config.json
+TESTEOF
+
+RUN chmod +x ~/test-mcp.sh
+
+RUN cat > ~/init-firewall.sh << 'FIREWALLEOF'
+#!/bin/bash
+set -euo pipefail
+
+if [ "${DISABLE_FIREWALL:-false}" = "true" ]; then
+    echo "Firewall disabled, skipping setup"
+    rm -f "$0"
+    exit 0
+fi
+
+iptables -F OUTPUT 2>/dev/null || true
+iptables -F INPUT 2>/dev/null || true
+
+iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+iptables -A INPUT -p udp --sport 53 -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -s 127.0.0.0/8 -d 127.0.0.0/8 -j ACCEPT
+iptables -A INPUT -s 127.0.0.0/8 -d 127.0.0.0/8 -j ACCEPT
+
+iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+if command -v ipset >/dev/null 2>&1; then
+    ipset destroy allowed-domains 2>/dev/null || true
+    ipset create allowed-domains hash:net
+    
+    for domain in api.anthropic.com console.anthropic.com; do
+        ips=$(getent hosts $domain | awk '{print $1}')
+        for ip in $ips; do
+            ipset add allowed-domains $ip 2>/dev/null || true
+        done
+    done
+    
+    iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
+else
+    iptables -A OUTPUT -d api.anthropic.com -j ACCEPT
+    iptables -A OUTPUT -d console.anthropic.com -j ACCEPT
+fi
+
+iptables -P OUTPUT DROP
+iptables -P INPUT DROP
+
+echo "Firewall initialized with Anthropic-only access"
+rm -f "$0"
+FIREWALLEOF
+
+RUN chmod +x ~/init-firewall.sh
+
+RUN mkdir -p ~/.config/claude && \
+   cat > ~/.config/claude/config.json << CONFIGEOF
+{
+  "mcpServers": {
+    "thinking": {
+      "command": "/home/$USERNAME/mcp-servers/run-thinking.sh",
+      "args": []
+    },
+    "memory": {
+      "command": "/home/$USERNAME/mcp-servers/run-memory.sh",
+      "args": [],
+      "env": {
+        "MEMORY_FILE_PATH": "/home/$USERNAME/.claudebox/memory.json"
+      }
+    }
+  }
+}
+CONFIGEOF
+
 RUN bash -c "source $NVM_DIR/nvm.sh && claude --version"
 
-# Create a wrapper script for Claude that loads NVM
+
 RUN echo '#!/bin/bash' > ~/claude-wrapper && \
-    echo 'export NVM_DIR="$HOME/.nvm"' >> ~/claude-wrapper && \
-    echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/claude-wrapper && \
-    echo 'exec claude "$@"' >> ~/claude-wrapper && \
-    chmod +x ~/claude-wrapper
+   echo 'export NVM_DIR="$HOME/.nvm"' >> ~/claude-wrapper && \
+   echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/claude-wrapper && \
+   echo '' >> ~/claude-wrapper && \
+   echo '# Filter out security flags before passing to claude' >> ~/claude-wrapper && \
+   echo 'FILTERED_ARGS=()' >> ~/claude-wrapper && \
+   echo 'for arg in "$@"; do' >> ~/claude-wrapper && \
+   echo '    case "$arg" in' >> ~/claude-wrapper && \
+   echo '        --dangerously-enable-sudo|--dangerously-disable-firewall) ;;' >> ~/claude-wrapper && \
+   echo '        *) FILTERED_ARGS+=("$arg") ;;' >> ~/claude-wrapper && \
+   echo '    esac' >> ~/claude-wrapper && \
+   echo 'done' >> ~/claude-wrapper && \
+   echo '' >> ~/claude-wrapper && \
+   echo 'exec claude "${FILTERED_ARGS[@]}"' >> ~/claude-wrapper && \
+   chmod +x ~/claude-wrapper
 
 WORKDIR /workspace
 
-# Use the wrapper as entrypoint
-ENTRYPOINT ["/home/claude/claude-wrapper"]
+USER root
+RUN echo '#!/bin/bash' > /usr/local/bin/docker-entrypoint && \
+   echo 'ENABLE_SUDO=false' >> /usr/local/bin/docker-entrypoint && \
+   echo 'DISABLE_FIREWALL=false' >> /usr/local/bin/docker-entrypoint && \
+   echo 'for arg in "$@"; do' >> /usr/local/bin/docker-entrypoint && \
+   echo '    case "$arg" in' >> /usr/local/bin/docker-entrypoint && \
+   echo '        --dangerously-enable-sudo) ENABLE_SUDO=true ;;' >> /usr/local/bin/docker-entrypoint && \
+   echo '        --dangerously-disable-firewall) DISABLE_FIREWALL=true ;;' >> /usr/local/bin/docker-entrypoint && \
+   echo '    esac' >> /usr/local/bin/docker-entrypoint && \
+   echo 'done' >> /usr/local/bin/docker-entrypoint && \
+   echo '' >> /usr/local/bin/docker-entrypoint && \
+   echo '# Run firewall setup AS ROOT before switching users' >> /usr/local/bin/docker-entrypoint && \
+   echo 'export DISABLE_FIREWALL' >> /usr/local/bin/docker-entrypoint && \
+   echo "if [ -f /home/$USERNAME/init-firewall.sh ]; then" >> /usr/local/bin/docker-entrypoint && \
+   echo "    /home/$USERNAME/init-firewall.sh || true" >> /usr/local/bin/docker-entrypoint && \
+   echo 'fi' >> /usr/local/bin/docker-entrypoint && \
+   echo '' >> /usr/local/bin/docker-entrypoint && \
+   echo '# NOW handle sudo setup if needed' >> /usr/local/bin/docker-entrypoint && \
+   echo 'if [ "$ENABLE_SUDO" = "true" ]; then' >> /usr/local/bin/docker-entrypoint && \
+   echo "    echo \"$USERNAME ALL=(ALL) NOPASSWD:ALL\" > /etc/sudoers.d/$USERNAME" >> /usr/local/bin/docker-entrypoint && \
+   echo "    chmod 0440 /etc/sudoers.d/$USERNAME" >> /usr/local/bin/docker-entrypoint && \
+   echo 'fi' >> /usr/local/bin/docker-entrypoint && \
+   echo '' >> /usr/local/bin/docker-entrypoint && \
+   echo '# Switch to user directory first' >> /usr/local/bin/docker-entrypoint && \
+   echo "cd /home/$USERNAME" >> /usr/local/bin/docker-entrypoint && \
+   echo '' >> /usr/local/bin/docker-entrypoint && \
+   echo '# Finally switch to user and run command' >> /usr/local/bin/docker-entrypoint && \
+   echo "exec su $USERNAME -c \"cd /workspace && /home/$USERNAME/claude-wrapper \\\"\\\$@\\\"\"" >> /usr/local/bin/docker-entrypoint && \
+   chmod +x /usr/local/bin/docker-entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
 EOF
 
-# Progress function for docker install
 progress_install() {
-    local label="$1"
-    local pct="$2"
-    local bar_length=30
-    local filled=$(( pct * bar_length / 100 ))
-    local empty=$(( bar_length - filled ))
-    local bar=$(printf "%0.s#" $(seq 1 $filled))
-    local spaces=$(printf "%0.s " $(seq 1 $empty))
-    printf "\r%-20s [%s%s] %3d%%" "$label" "$bar" "$spaces" "$pct"
-    if [ "$pct" -eq 100 ]; then
-        echo
-    fi
+   local label="$1"
+   local pct="$2"
+   local bar_length=30
+   local filled=$(( pct * bar_length / 100 ))
+   local empty=$(( bar_length - filled ))
+   local bar=$(printf "%0.s#" $(seq 1 $filled))
+   local spaces=$(printf "%0.s " $(seq 1 $empty))
+   printf "\r%-20s [%s%s] %3d%%" "$label" "$bar" "$spaces" "$pct"
+   if [ "$pct" -eq 100 ]; then
+       echo
+   fi
 }
 
-# Animated progress during build
-    for i in {0..100..5}; do
-        progress_install "Docker image" $i
-        sleep 0.1
-    done &
-    PROGRESS_PID=$!
+   for i in {0..100..5}; do
+       progress_install "Docker image" $i
+       sleep 0.1
+   done &
+   PROGRESS_PID=$!
 
-    docker build \
-        --build-arg USER_ID=$USER_ID \
-        --build-arg GROUP_ID=$GROUP_ID \
-        --build-arg USERNAME=$DOCKER_USER \
-        --build-arg NODE_VERSION="$NODE_VERSION" \
-        -f "$DOCKERFILE" -t "$IMAGE_NAME" "$PROJECT_DIR" 2>&1 >/dev/null
+   docker build \
+       --build-arg USER_ID=$USER_ID \
+       --build-arg GROUP_ID=$GROUP_ID \
+       --build-arg USERNAME=$DOCKER_USER \
+       --build-arg NODE_VERSION="$NODE_VERSION" \
+       -f "$DOCKERFILE" -t "$IMAGE_NAME" "$PROJECT_DIR" 2>&1 >/dev/null
 
-    kill $PROGRESS_PID 2>/dev/null
-    progress_install "Docker image" 100
-    echo -e "\n${GREEN}Complete!${NC}\n"
+   kill $PROGRESS_PID 2>/dev/null
+   progress_install "Docker image" 100
+   echo -e "\n${GREEN}Complete!${NC}\n"
 
-    docker build \
-        --build-arg USER_ID=$USER_ID \
-        --build-arg GROUP_ID=$GROUP_ID \
-        --build-arg USERNAME=$DOCKER_USER \
-        -f "$DOCKERFILE" -t "$IMAGE_NAME" "$PROJECT_DIR" 2>&1 | \
-        grep -v 'invoke-rc.d' | grep -v 'policy-rc.d' || true
+   docker build \
+       --build-arg USER_ID=$USER_ID \
+       --build-arg GROUP_ID=$GROUP_ID \
+       --build-arg USERNAME=$DOCKER_USER \
+       --build-arg NODE_VERSION="$NODE_VERSION" \
+       -f "$DOCKERFILE" -t "$IMAGE_NAME" "$PROJECT_DIR" 2>&1 | \
+       grep -v 'invoke-rc.d' | grep -v 'policy-rc.d' || true
 
-    rm -f "$DOCKERFILE"
+   rm -f "$DOCKERFILE"
 
-    echo -e "${GREEN}Docker image '$IMAGE_NAME' built with NVM and Node.js 23!${NC}"
-    first_time=true
+   echo -e "${GREEN}Docker image '$IMAGE_NAME' built!${NC}"
+   first_time=true
 fi
 
 # Install global symlink if needed (this is the only other place that might need sudo)
 if [[ ! -L "$LINK_TARGET" ]]; then
-    if [[ -w "$(dirname "$LINK_TARGET")" ]]; then
-        # We can write to /usr/local/bin without sudo
-        ln -s "$SCRIPT_PATH" "$LINK_TARGET"
-        echo -e "${GREEN}'claudebox' is now globally available!${NC}"
-    else
-        # We need sudo for the symlink
-        echo -e "${BLUE}Installing global symlink...${NC}"
-        echo -e "${YELLOW}Creating symlink in /usr/local/bin requires sudo...${NC}"
-        sudo ln -s "$SCRIPT_PATH" "$LINK_TARGET"
-        echo -e "${GREEN}'claudebox' is now globally available!${NC}"
-    fi
+   if [[ -w "$(dirname "$LINK_TARGET")" ]]; then
+       # We can write to /usr/local/bin without sudo
+       ln -s "$SCRIPT_PATH" "$LINK_TARGET"
+       echo -e "${GREEN}'claudebox' is now globally available!${NC}"
+   else
+       # We need sudo for the symlink
+       echo -e "${BLUE}Installing global symlink...${NC}"
+       echo -e "${YELLOW}Creating symlink in /usr/local/bin requires sudo...${NC}"
+       sudo ln -s "$SCRIPT_PATH" "$LINK_TARGET"
+       echo -e "${GREEN}'claudebox' is now globally available!${NC}"
+   fi
 fi
 
 # Show welcome message on first run
 if [[ "$first_time" == true ]]; then
-    echo
-    echo -e "${CYAN}ClaudeBox Setup Complete!${NC}"
-    echo
-    echo -e "${GREEN}Quick Start:${NC}"
-    echo -e "  ${YELLOW}claudebox [options]${NC}        # Launch Claude CLI"
-    echo
-    echo -e "${GREEN}Power Features:${NC}"
-    echo -e "  ${YELLOW}claudebox profile${NC}                # See all language profiles"
-    echo -e "  ${YELLOW}claudebox profile c openwrt${NC}      # Install C + OpenWRT tools"
-    echo -e "  ${YELLOW}claudebox profile python ml${NC}      # Install Python + ML stack"
-    echo -e "  ${YELLOW}claudebox install <packages>${NC}     # Install additional apt packages"
-    echo -e "  ${YELLOW}claudebox shell${NC}                  # Open bash shell in container"
-    echo
-    echo -e "${PURPLE}Just install the profile you need and start coding!${NC}"
-    exit 0
+   echo
+   echo -e "${CYAN}ClaudeBox Setup Complete!${NC}"
+   echo
+   echo -e "${GREEN}Quick Start:${NC}"
+   echo -e "  ${YELLOW}claudebox [options]${NC}        # Launch Claude CLI"
+   echo
+   echo -e "${GREEN}Power Features:${NC}"
+   echo -e "  ${YELLOW}claudebox profile${NC}                # See all language profiles"
+   echo -e "  ${YELLOW}claudebox profile c openwrt${NC}      # Install C + OpenWRT tools"
+   echo -e "  ${YELLOW}claudebox profile python ml${NC}      # Install Python + ML stack"
+   echo -e "  ${YELLOW}claudebox install <packages>${NC}     # Install additional apt packages"
+   echo -e "  ${YELLOW}claudebox shell${NC}                  # Open bash shell in container"
+   echo
+   echo -e "${GREEN}Security:${NC}"
+   echo -e "  Network firewall: ON by default (Anthropic recommended)"
+   echo -e "  Sudo access: OFF by default"
+   echo
+   echo -e "${PURPLE}Just install the profile you need and start coding!${NC}"
+   exit 0
 fi
 
-# Run Claude in Docker
 docker run -it --rm \
-    -w /workspace \
-    -v "$PROJECT_DIR":/workspace \
-    -v "$CLAUDE_DATA_DIR":/home/$DOCKER_USER/.claude \
-    -v "$HOME/.claude.json":/home/$DOCKER_USER/.claude.json \
-    -v "$HOME/.npmrc:/home/$DOCKER_USER/.npmrc:ro" \
-    -v "$HOME/.ssh:/home/$DOCKER_USER/.ssh:ro" \
-    -e "NODE_ENV=${NODE_ENV:-production}" \
-    -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
-    --network host \
-    "$IMAGE_NAME" "${USER_ARGS[@]}"
+   -w /workspace \
+   -v "$PROJECT_DIR":/workspace \
+   -v "$CLAUDE_DATA_DIR":/home/$DOCKER_USER/.claude \
+   -v "$HOME/.claudebox":/home/$DOCKER_USER/.claudebox \
+   -v "$HOME/.config/claude":/home/$DOCKER_USER/.config/claude \
+   -v "$HOME/.claude.json":/home/$DOCKER_USER/.claude.json \
+   -v "$HOME/.npmrc":/home/$DOCKER_USER/.npmrc:ro \
+   -v "$HOME/.ssh":/home/$DOCKER_USER/.ssh:ro \
+   -e "NODE_ENV=${NODE_ENV:-production}" \
+   -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
+   --cap-add NET_ADMIN \
+   --cap-add NET_RAW \
+   "$IMAGE_NAME" "${USER_ARGS[@]}"
