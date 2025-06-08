@@ -650,6 +650,20 @@ WORKDIR /workspace
 ENTRYPOINT ["/home/claude/claude-wrapper"]
 EOF
 
+# Progress function for docker install
+progress_install() {
+    local label="$1"
+    local pct="$2"
+    local bar_length=30
+    local filled=$(( pct * bar_length / 100 ))
+    local empty=$(( bar_length - filled ))
+    local bar=$(printf "%0.s#" $(seq 1 $filled))
+    local spaces=$(printf "%0.s " $(seq 1 $empty))
+    printf "\r%-20s [%s%s] %3d%%" "$label" "$bar" "$spaces" "$pct"
+    if [ "$pct" -eq 100 ]; then
+        echo
+    fi
+}
 
 # Animated progress during build
     for i in {0..100..5}; do
