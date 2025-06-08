@@ -547,12 +547,15 @@ fi
 if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     # --help or -h -> show Claude's help
     if docker image inspect "$IMAGE_NAME" &>/dev/null; then
-        docker run --rm "$IMAGE_NAME" --help | sed '1s/claude/claudebox/g'
+        docker run --rm \
+            -u "$DOCKER_USER" \
+            --entrypoint /home/$DOCKER_USER/claude-wrapper \
+            "$IMAGE_NAME" --help | sed '1s/claude/claudebox/g'
         echo
-	    echo -e "${WHITE}Added Options:${NC}"
-	    echo -e "${CYAN}  --dangerously-enable-sudo       ${WHITE}Enable sudo without password"
+        echo -e "${WHITE}Added Options:${NC}"
+        echo -e "${CYAN}  --dangerously-enable-sudo       ${WHITE}Enable sudo without password"
         echo -e "${CYAN}  --dangerously-disable-firewall  ${WHITE}Disable network restrictions"
-	    echo
+        echo
         echo -e "${WHITE}Added Commands:"
         echo -e "  profile [names...]              Install language profiles"
         echo -e "  install <packages>              Install apt packages"
@@ -560,7 +563,7 @@ if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
         echo -e "  info                            Show ClaudeBox information"
         echo -e "  clean                           Remove ClaudeBox image"
         echo -e "  rebuild                         Rebuild Docker image${NC}"
-	else
+    else
         echo -e "${CYAN}ClaudeBox - Claude Code Docker Environment${NC}"
         echo
         echo -e "${YELLOW}First run setup required!${NC}"
