@@ -28,7 +28,7 @@ DOCKERFILE="$(mktemp /tmp/claudebox-dockerfile.XXXXXX)"
 NODE_VERSION="--lts"
 USER_ARGS=("$@")
 USER_ARGS+=("--dangerously-skip-permissions")
-# USER_ARGS+=("--dangerously-enable-sudo")
+#USER_ARGS+=("--dangerously-enable-sudo")
 USER_ARGS+=("--dangerously-disable-firewall")
 
 # Color codes
