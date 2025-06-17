@@ -1,6 +1,6 @@
 # ClaudeBox 🐳
 
-**The Ultimate Claude Code Docker Development Environment** - Run Claude AI's coding assistant in a fully containerized, reproducible environment with pre-configured development profiles, MCP servers, and Agentic Project Management framework.
+run claude code in a dynamically containerized environment, with pre-configured dev profiles, mcp servers & project management commands - all with one shell script!
 
 ## 🚀 Quick Start
 
@@ -19,9 +19,8 @@ chmod +x claudebox
 - **OpenRouter AI** - Access to multiple LLM models (GPT-4, Claude, Gemini, etc.)
 
 ### 📋 **Agentic Project Management (APM)**
-Revolutionary framework that brings real-world project management to AI-assisted development:
 - **Manager Agents** orchestrate entire projects, creating detailed implementation plans
-- **Multi-Agent Teams** - NEW! Planner, Developer, Reviewer, and Tester agents work together
+- **Multi-Agent Teams** - Planner, Developer, Reviewer, and Tester agents work together
 - **Implementation Agents** execute specific tasks with laser focus
 - **Memory Bank** system preserves context across sessions using MCP persistence
 - **Handover Protocols** ensure seamless transitions when context windows fill

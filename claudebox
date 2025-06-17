@@ -65,28 +65,16 @@ logo() {
 ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
 
-██████╗  ██████╗ ██╗  ██╗ ------ ┌──────────────┐
-██╔══██╗██╔═══██╗╚██╗██╔╝ ------ │ The Ultimate │
-██████╔╝██║   ██║ ╚███╔╝  ------ │ Claude Code  │
-██╔══██╗██║   ██║ ██╔██╗  ------ │  Docker Dev  │
-██████╔╝╚██████╔╝██╔╝ ██╗ ------ │ Environment  │
-╚═════╝  ╚═════╝ ╚═╝  ╚═╝ ------ └──────────────┘
+██████╗  ██████╗ ██╗  ██╗
+██╔══██╗██╔═══██╗╚██╗██╔╝    ╔════════════════════╗
+██████╔╝██║   ██║ ╚███╔╝     ║ 🧠 Manager Agent   ║
+██╔══██╗██║   ██║ ██╔██╗     ║ 📋 Planner Agent   ║
+██████╔╝╚██████╔╝██╔╝ ██╗    ║ 💻 Developer Agent ║
+╚═════╝  ╚═════╝ ╚═╝  ╚═╝    ║ 👁️  Reviewer Agent ║
+                             ║ 🧪 Tester Agent    ║
+      Multi-Agent Framework  ╚════════════════════╝
 '
-    while IFS= read -r l; do
-        o="" c=""
-        for ((i=0;i<${#l};i++)); do
-            ch="${l:$i:1}"
-            [[ "$ch" == " " ]] && { o+="$ch"; continue; }
-            cc=$(printf '%d' "'$ch" 2>/dev/null||echo 0)
-            if [[ $cc -ge 32 && $cc -le 126 ]]; then n='\033[33m'
-            elif [[ $cc -ge 9552 && $cc -le 9580 ]]; then n='\033[34m'
-            elif [[ $cc -eq 9608 ]]; then n='\033[31m'
-            else n='\033[37m'; fi
-            [[ "$n" != "$c" ]] && { o+="$n"; c="$n"; }
-            o+="$ch"
-        done
-        echo -e "${o}\033[0m"
-    done <<< "$cb"
+    echo -e "${CYAN}${cb}${NC}"
 }
 
 # Symlink management
@@ -1588,9 +1576,10 @@ RUN bash -c "source $NVM_DIR/nvm.sh && \
     npm install -g @anthropic-ai/claude-code"
 
 # Copy firewall script
-COPY .claudebox-firewall.*.tmp /home/$USERNAME/init-firewall.sh
-
-RUN chmod +x ~/init-firewall.sh
+USER root
+COPY --chown=$USERNAME:$USERNAME .claudebox-firewall.*.tmp /home/$USERNAME/init-firewall.sh
+RUN chmod +x /home/$USERNAME/init-firewall.sh
+USER $USERNAME
 
 # Install profile packages as separate layers for better caching
 USER root
@@ -1702,17 +1691,20 @@ USER $USERNAME
 
 RUN bash -c "source $NVM_DIR/nvm.sh && claude --version"
 
-RUN echo '#!/bin/bash' > ~/claude-wrapper && \
-   echo 'export NVM_DIR="$HOME/.nvm"' >> ~/claude-wrapper && \
-   echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/claude-wrapper && \
-   echo 'nvm use default >/dev/null 2>&1' >> ~/claude-wrapper && \
-   echo '# Use MCP config if it exists' >> ~/claude-wrapper && \
-   echo 'if [ -f "$HOME/.claudebox/.mcp.json" ]; then' >> ~/claude-wrapper && \
-   echo '    exec claude --mcp-config "$HOME/.claudebox/.mcp.json" "$@"' >> ~/claude-wrapper && \
-   echo 'else' >> ~/claude-wrapper && \
-   echo '    exec claude "$@"' >> ~/claude-wrapper && \
-   echo 'fi' >> ~/claude-wrapper && \
-   chmod +x ~/claude-wrapper
+# Create claude-wrapper script
+RUN printf '%s\n' \
+'#!/bin/bash' \
+'export NVM_DIR="$HOME/.nvm"' \
+'[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"' \
+'nvm use default >/dev/null 2>&1' \
+'# Use MCP config if it exists' \
+'if [ -f "$HOME/.claudebox/.mcp.json" ]; then' \
+'    exec claude --mcp-config "$HOME/.claudebox/.mcp.json" "$@"' \
+'else' \
+'    exec claude "$@"' \
+'fi' > ~/claude-wrapper
+
+RUN chmod +x ~/claude-wrapper
 
 WORKDIR /workspace
 
