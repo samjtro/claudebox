@@ -1,24 +1,18 @@
 # ClaudeBox 🐳
 
-[![Docker](https://img.shields.io/badge/Docker-Required-blue.svg)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
 **The Ultimate Claude Code Docker Development Environment** - Run Claude AI's coding assistant in a fully containerized, reproducible environment with pre-configured development profiles, MCP servers, and Agentic Project Management framework.
 
 ## 🚀 Quick Start
 
 ```bash
-# Download and run ClaudeBox
 curl -O https://raw.githubusercontent.com/samjtro/claudebox/main/claudebox
 chmod +x claudebox
 ./claudebox
-
-# That's it! ClaudeBox handles everything automatically
 ```
 
 ## ✨ Key Features
 
-### 🤖 **Four Integrated MCP Servers**
+### 🤖 **Integrated MCP Servers**
 - **Memory Server** - Persistent knowledge graph across sessions
 - **Sequential Thinking** - Complex problem-solving with revision capabilities  
 - **Context7** - Enhanced conversation memory management
@@ -182,20 +176,6 @@ claudebox clean --all
 claudebox rebuild
 claudebox profile <name>
 ```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📝 License
-
-MIT License - see LICENSE file for details.
-
-## 🎉 Acknowledgments
-
-- [Anthropic](https://www.anthropic.com/) for Claude AI
-- [Model Context Protocol](https://github.com/anthropics/model-context-protocol) community
-- All the amazing open-source projects in our profiles
 
 ---
 
