@@ -1,0 +1,25 @@
+# Local development
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Claude/Project specific
+.claude/
+.claudebox/
+.mcp.json
+MEMORY_BANK.md
+IMPLEMENTATION_PLAN.md
+
+# Docker
+*.tar.gz
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+.claudebox-dockerfile.*.tmp
+.claudebox-firewall.*.tmp
+.claudebox-entrypoint.*.tmp

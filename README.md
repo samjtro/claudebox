@@ -2,148 +2,121 @@
 
 [![Docker](https://img.shields.io/badge/Docker-Required-blue.svg)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![GitHub](https://img.shields.io/badge/GitHub-RchGrav%2Fclaudebox-blue.svg)](https://github.com/RchGrav/claudebox)
 
-The Ultimate Claude Code Docker Development Environment - Run Claude AI's coding assistant in a fully containerized, reproducible environment with pre-configured development profiles and MCP servers.
+**The Ultimate Claude Code Docker Development Environment** - Run Claude AI's coding assistant in a fully containerized, reproducible environment with pre-configured development profiles, MCP servers, and Agentic Project Management framework.
 
-```
- ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
-██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
-██║     ██║     ███████║██║   ██║██║  ██║█████╗
-██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
-╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
- ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
-
-██████╗  ██████╗ ██╗  ██╗
-██╔══██╗██╔═══██╗╚██╗██╔╝
-██████╔╝██║   ██║ ╚███╔╝ 
-██╔══██╗██║   ██║ ██╔██╗ 
-██████╔╝╚██████╔╝██╔╝ ██╗
-╚═════╝  ╚═════╝ ╚═╝  ╚═╝
-```
-
-## 🚀 What's New in Latest Update
-
-- **MCP Server Integration**: Built-in Sequential Thinking and Memory servers for enhanced Claude capabilities
-- **Automatic Docker Setup**: Complete Docker installation and configuration for Ubuntu, Debian, Fedora, Arch
-- **Enhanced Security**: Network firewall restricting to Anthropic APIs (can be disabled)
-- **15+ Development Profiles**: From embedded systems to machine learning
-- **Visual Progress Indicators**: See exactly what's happening during installation
-- **Smart `.mcp.json` Management**: Automatic backup and restore of existing configurations
-
-## ✨ Features
-
-- **Containerized Environment**: Run Claude Code in an isolated Docker container
-- **MCP Servers**: Pre-configured Model Context Protocol servers for thinking and memory
-- **Development Profiles**: Pre-configured language stacks (C/C++, Python, Rust, Go, etc.)
-- **Persistent Configuration**: Settings and data persist between sessions
-- **Package Management**: Easy installation of additional development tools
-- **Auto-Setup**: Handles Docker installation and configuration automatically
-- **Security Features**: Network isolation with optional overrides
-- **Cross-Platform**: Works on Ubuntu, Debian, Fedora, Arch, and more
-
-## 📋 Prerequisites
-
-- Linux or macOS (WSL2 for Windows)
-- Bash shell
-- Docker (will be installed automatically if missing)
-
-## 🛠️ Installation
+## 🚀 Quick Start
 
 ```bash
-# Download and setup ClaudeBox
-curl -O https://raw.githubusercontent.com/RchGrav/claudebox/main/claudebox
+# Download and run ClaudeBox
+curl -O https://raw.githubusercontent.com/samjtro/claudebox/main/claudebox
 chmod +x claudebox
-
-# Run initial setup (handles everything automatically)
 ./claudebox
+
+# That's it! ClaudeBox handles everything automatically
 ```
 
-The script will:
-- ✅ Check for Docker (install if needed)
-- ✅ Configure Docker for non-root usage
-- ✅ Build the ClaudeBox image with MCP servers
-- ✅ Create a global symlink for easy access
-- ✅ Set up MCP configuration in your workspace
+## ✨ Key Features
 
-## 📚 Usage
+### 🤖 **Four Integrated MCP Servers**
+- **Memory Server** - Persistent knowledge graph across sessions
+- **Sequential Thinking** - Complex problem-solving with revision capabilities  
+- **Context7** - Enhanced conversation memory management
+- **OpenRouter AI** - Access to multiple LLM models (GPT-4, Claude, Gemini, etc.)
 
-### Basic Usage
+### 📋 **Agentic Project Management (APM)**
+Complete framework for managing complex projects with specialized AI agents:
+- Manager Agents for orchestration and planning
+- Implementation Agents for task execution
+- Integrated Memory Bank with MCP persistence
+- Structured handover protocols
+
+### 🛠️ **15+ Development Profiles**
+Pre-configured environments for every stack:
+- **Languages**: C/C++, Rust, Go, Python, JavaScript/TypeScript, Java, Ruby, PHP
+- **Specialized**: OpenWRT, Embedded Systems, Machine Learning, Data Science
+- **Tools**: DevOps, Security, Database, Web Development
+
+### 🔒 **Security & Isolation**
+- Containerized environment with network firewall
+- Anthropic-only API access by default (configurable)
+- Non-root user matching host UID/GID
+- Volume mounts for safe workspace access
+
+## 📚 Usage Guide
+
+### Basic Commands
 
 ```bash
-# Launch Claude CLI with MCP servers enabled
+# Launch Claude with all features enabled
 claudebox
 
-# Pass arguments to Claude
-claudebox --model opus -c
+# Use specific Claude model
+claudebox --model opus
 
-# Get help
-claudebox help          # ClaudeBox specific help
-claudebox --help        # Claude CLI help
+# Install development profiles
+claudebox profile python ml    # Python + Machine Learning
+claudebox profile rust go      # Rust + Go
+claudebox profile              # List all profiles
+
+# Manage packages
+claudebox install htop vim
+claudebox shell               # Open container shell
+claudebox update              # Update Claude CLI
 ```
 
-### Development Profiles
-
-ClaudeBox includes 15+ pre-configured development environments:
+### APM Commands (Use within Claude)
 
 ```bash
-# List all available profiles
-claudebox profile
-
-# Install specific profiles
-claudebox profile python ml        # Python + Machine Learning
-claudebox profile c openwrt       # C/C++ + OpenWRT
-claudebox profile rust go         # Rust + Go
+/apm-manager      # Initialize Manager Agent
+/apm-implement    # Create Implementation Agent
+/apm-task         # Generate task assignments
+/apm-memory       # Manage Memory Bank
+/apm-handover     # Execute handover protocol
+/apm-plan         # Manage Implementation Plan
+/apm-review       # Review completed work
 ```
 
-#### Available Profiles:
-
-- **c** - C/C++ Development (gcc, g++, gdb, valgrind, cmake, cmocka, lcov, ncurses)
-- **openwrt** - OpenWRT Development (cross-compilation, QEMU, build essentials)
-- **rust** - Rust Development (cargo, rustc, clippy, rust-analyzer)
-- **python** - Python Development (pip, venv, black, mypy, pylint, poetry, pipenv)
-- **go** - Go Development (latest Go toolchain)
-- **javascript** - Node.js/TypeScript (npm, yarn, pnpm, TypeScript, ESLint, Prettier)
-- **java** - Java Development (OpenJDK 17, Maven, Gradle, Ant)
-- **ruby** - Ruby Development (Ruby, gems, bundler)
-- **php** - PHP Development (PHP, Composer, common extensions)
-- **database** - Database Tools (PostgreSQL, MySQL, SQLite, Redis, MongoDB clients)
-- **devops** - DevOps Tools (Docker, Kubernetes, Terraform, Ansible, AWS CLI)
-- **web** - Web Development (nginx, curl, httpie, jq)
-- **embedded** - Embedded Development (ARM toolchain, OpenOCD, PlatformIO)
-- **datascience** - Data Science (NumPy, Pandas, Jupyter, R)
-- **security** - Security Tools (nmap, tcpdump, wireshark, penetration testing)
-- **ml** - Machine Learning (PyTorch, TensorFlow, scikit-learn, transformers)
-
-### MCP Servers
-
-ClaudeBox includes two powerful MCP servers:
-
-1. **Sequential Thinking Server** - For complex problem-solving with revision capabilities
-2. **Memory Server** - Knowledge graph for persistent memory across sessions
-
-These are automatically configured and available to Claude within the container.
-
-### Package Management
+### Environment Variables
 
 ```bash
-# Install additional packages
-claudebox install htop vim tmux
-
-# Open a shell in the container
-claudebox shell
-
-# Update Claude CLI
-claudebox update
+export ANTHROPIC_API_KEY=your-key-here        # Required
+export OPENROUTER_API_KEY=your-key-here       # For OpenRouter AI
+export OPENROUTER_DEFAULT_MODEL=gpt-4         # Optional default model
 ```
 
-### Security Options
+## 🏗️ Architecture
+
+```
+claudebox/
+├── claudebox           # Main executable script
+├── lib/
+│   ├── apm/           # APM framework
+│   │   ├── commands/  # Claude command templates
+│   │   ├── prompts/   # Core APM prompts
+│   │   └── docs/      # APM documentation
+│   └── mcp/           # MCP configurations
+│       └── default-config.json
+└── README.md
+```
+
+### How It Works
+
+1. **Smart Setup**: Automatically installs Docker if needed, configures permissions
+2. **Dynamic Image Building**: Creates optimized Docker images based on selected profiles
+3. **MCP Integration**: Auto-configures all MCP servers with proper environment
+4. **APM Framework**: Provides structured project management through Claude commands
+5. **Persistent Storage**: Maintains configuration and data between sessions
+
+## 🚧 Advanced Usage
+
+### Security Overrides
 
 ```bash
-# Run with sudo enabled (use with caution)
+# Enable sudo in container (use with caution)
 claudebox --dangerously-enable-sudo
 
-# Disable network firewall (allows all network access)
+# Disable network firewall
 claudebox --dangerously-disable-firewall
 
 # Skip permission checks
@@ -153,66 +126,54 @@ claudebox --dangerously-skip-permissions
 ### Maintenance
 
 ```bash
-# Remove ClaudeBox image
+# Clean up Docker images
 claudebox clean
 
-# Deep clean (remove all build cache)
+# Deep clean (removes all cache)
 claudebox clean --all
 
-# Rebuild the image from scratch
+# Rebuild from scratch
 claudebox rebuild
 ```
 
-## 🔧 Configuration
+### Custom MCP Servers
 
-ClaudeBox stores data in:
-- `~/.claude/` - Claude configuration and data
-- `~/.claudebox/` - ClaudeBox-specific data (MCP memory, etc.)
-- Current directory mounted as `/workspace` in container
+Edit `~/.claudebox/.mcp.json` to add custom MCP servers:
 
-### Environment Variables
+```json
+{
+  "mcpServers": {
+    "custom-server": {
+      "command": "npx",
+      "args": ["-y", "@your-org/mcp-server"],
+      "env": {
+        "API_KEY": "${YOUR_API_KEY}"
+      }
+    }
+  }
+}
+```
 
-- `ANTHROPIC_API_KEY` - Your Anthropic API key
-- `NODE_ENV` - Node environment (default: production)
+## 📁 Data Storage
 
-### MCP Configuration
-
-ClaudeBox automatically manages `.mcp.json` in your workspace:
-- Creates configuration if none exists
-- Backs up existing configurations
-- Restores original on exit
-
-## 🏗️ Architecture
-
-ClaudeBox creates a Debian-based Docker image with:
-- Node.js (via NVM for version flexibility)
-- Claude Code CLI (@anthropic-ai/claude-code)
-- MCP servers (thinking and memory)
-- User account matching host UID/GID
-- Network firewall (Anthropic-only by default)
-- Volume mounts for workspace and configuration
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+- `~/.claude/` - Claude configuration
+- `~/.claudebox/` - ClaudeBox data (MCP configs, project data)
+- `./` - Current directory mounted as `/workspace` in container
+- `.claude/` - Project-specific Claude commands and APM data
 
 ## 🐛 Troubleshooting
 
-### Docker Permission Issues
-ClaudeBox automatically handles Docker setup, but if you encounter issues:
-1. The script will add you to the docker group
-2. You may need to log out/in or run `newgrp docker`
-3. Run `claudebox` again
+### Docker Issues
+```bash
+# ClaudeBox automatically handles Docker setup, but if needed:
+newgrp docker  # Refresh group membership
+claudebox      # Try again
+```
 
 ### MCP Servers Not Working
-Test MCP servers after installation:
 ```bash
 claudebox shell
-~/test-mcp.sh
+~/test-mcp.sh  # Test MCP connectivity
 ```
 
 ### Profile Installation Failed
@@ -222,24 +183,20 @@ claudebox rebuild
 claudebox profile <name>
 ```
 
-### Can't Find Command
-Ensure the symlink was created:
-```bash
-sudo ln -s /path/to/claudebox /usr/local/bin/claudebox
-```
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📝 License
+
+MIT License - see LICENSE file for details.
 
 ## 🎉 Acknowledgments
 
 - [Anthropic](https://www.anthropic.com/) for Claude AI
-- [Model Context Protocol](https://github.com/anthropics/model-context-protocol) for MCP servers
-- Docker community for containerization tools
-- All the open-source projects included in the profiles
+- [Model Context Protocol](https://github.com/anthropics/model-context-protocol) community
+- All the amazing open-source projects in our profiles
 
 ---
 
-Made with ❤️ for developers who love clean, reproducible environments
-
-## Contact
-
-**Author/Maintainer:** RchGrav  
-**GitHub:** [@RchGrav](https://github.com/RchGrav)
+**Built for developers who demand clean, reproducible AI-powered development environments.**

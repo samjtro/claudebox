@@ -1687,6 +1687,71 @@ WORKDIR /workspace
 USER root
 # Copy entrypoint script
 COPY .claudebox-entrypoint.*.tmp /usr/local/bin/docker-entrypoint
+RUN echo "Skipping heredoc" > /dev/null << 'EOF'
+#!/bin/bash
+ENABLE_SUDO=false
+DISABLE_FIREWALL=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dangerously-enable-sudo) ENABLE_SUDO=true; shift ;;
+        --dangerously-disable-firewall) DISABLE_FIREWALL=true; shift ;;
+        *) break ;;
+    esac
+done
+export DISABLE_FIREWALL
+
+# Set up project-specific symlinks
+if [ -d /home/$USERNAME/.claudebox-project ]; then
+    # Ensure memory directory is accessible
+    mkdir -p /home/$USERNAME/.claudebox-project/memory
+    chown -R $USERNAME:$USERNAME /home/$USERNAME/.claudebox-project
+fi
+
+if [ -f /home/DOCKERUSER/init-firewall.sh ]; then
+    /home/DOCKERUSER/init-firewall.sh || true
+fi
+if [ "$ENABLE_SUDO" = "true" ]; then
+    echo "DOCKERUSER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/DOCKERUSER
+    chmod 0440 /etc/sudoers.d/DOCKERUSER
+fi
+
+if [ -n "$CLAUDEBOX_PROJECT_DIR" ]; then
+    PROFILE_FILE="/home/DOCKERUSER/.claudebox/profiles/$(echo "$CLAUDEBOX_PROJECT_DIR" | sed 's|/|-|g' | sed 's|^-||').ini"
+
+    if command -v uv >/dev/null 2>&1 && [ -f "$PROFILE_FILE" ] && grep -q "python" "$PROFILE_FILE"; then
+        if [ ! -d /home/DOCKERUSER/.claudebox-project/.venv ]; then
+            su - DOCKERUSER -c "uv venv /home/DOCKERUSER/.claudebox-project/.venv"
+            if [ -f /workspace/pyproject.toml ]; then
+                su - DOCKERUSER -c "cd /workspace && uv sync"
+            else
+                su - DOCKERUSER -c "uv pip install --python /home/DOCKERUSER/.claudebox-project/.venv/bin/python ipython black pylint mypy flake8 pytest ruff"
+            fi
+        fi
+
+        for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
+            if ! grep -q "source /home/DOCKERUSER/.claudebox-project/.venv/bin/activate" "$shell_rc"; then
+                echo 'if [ -f /home/DOCKERUSER/.claudebox-project/.venv/bin/activate ]; then source /home/DOCKERUSER/.claudebox-project/.venv/bin/activate; fi' >> "$shell_rc"
+            fi
+        done
+    fi
+fi
+
+cd /home/DOCKERUSER
+# Check if we're in shell mode
+if [[ "$1" == "--shell-mode" ]]; then
+    shift  # Remove --shell-mode flag
+    exec su DOCKERUSER -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
+else
+    # Build command with properly quoted arguments
+    cmd="cd /workspace && /home/DOCKERUSER/claude-wrapper"
+    for arg in "$@"; do
+        # Escape single quotes in the argument
+        escaped_arg=$(echo "$arg" | sed "s/'/'\\\\''/g")
+        cmd="$cmd '$escaped_arg'"
+    done
+    exec su DOCKERUSER -c "$cmd"
+fi
+EOF
 
 RUN chmod +x /usr/local/bin/docker-entrypoint
 
