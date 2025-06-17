@@ -21,10 +21,12 @@ chmod +x claudebox
 ### 📋 **Agentic Project Management (APM)**
 Revolutionary framework that brings real-world project management to AI-assisted development:
 - **Manager Agents** orchestrate entire projects, creating detailed implementation plans
+- **Multi-Agent Teams** - NEW! Planner, Developer, Reviewer, and Tester agents work together
 - **Implementation Agents** execute specific tasks with laser focus
 - **Memory Bank** system preserves context across sessions using MCP persistence
 - **Handover Protocols** ensure seamless transitions when context windows fill
 - **Structured Workflows** that scale from simple scripts to enterprise applications
+- **Codex Integration** - Optional GPT-4 powered code review enhancement
 
 ### 🛠️ **15+ Development Profiles**
 Pre-configured environments for every stack:
@@ -82,6 +84,7 @@ The APM framework revolutionizes how you manage complex AI-assisted projects by 
 ```bash
 /apm-manager      # Initialize Manager Agent - always start here
 /apm-implement    # Create Implementation Agent for task execution
+/apm-agents       # NEW! Launch multi-agent development team
 /apm-task         # Generate detailed task assignments
 /apm-memory       # View/manage Memory Bank (persistent knowledge base)
 /apm-handover     # Execute smooth handover when context limits approach
@@ -97,6 +100,32 @@ The APM framework revolutionizes how you manage complex AI-assisted projects by 
 5. **Structured Logging** maintains project continuity across sessions
 
 Perfect for: Multi-day projects, complex refactoring, large feature development, or any work that exceeds single context windows.
+
+#### Multi-Agent Development Team (NEW!)
+The `/apm-agents` command provides granular control over development iterations:
+
+**Interactive Workflow**: Plan → Questions → Answers → Agents Execute
+
+- **Plan-Driven Development**: Each iteration starts with a markdown plan file
+- **Opus-Powered Q&A**: Claude Opus generates specific questions about your plan
+- **Interactive Guidance**: Answer questions in vim to steer development direction
+- **Context-Aware Execution**: Agents work based on your specific answers
+- **Specialized Roles**: Planner, Developer, Reviewer, and Tester agents collaborate
+
+```bash
+# First iteration - Opus will ask questions, you answer in vim
+/apm-agents iterate project-plan.md
+
+# Continue with iteration 2
+/apm-agents iterate project-plan.md 2
+
+# With Codex integration for enhanced reviews
+export CODEX_ENABLED=true
+export OPENAI_API_KEY=your-key
+/apm-agents iterate project-plan.md
+```
+
+Perfect for: Maintaining control over AI development, ensuring alignment with your vision, and getting exactly the code you need.
 
 ### Environment Variables
 
@@ -116,6 +145,10 @@ claudebox/
 │   │   ├── commands/  # Claude command templates
 │   │   ├── prompts/   # Core APM prompts
 │   │   └── docs/      # APM documentation
+│   ├── agents/        # Multi-agent framework
+│   │   ├── core/      # Agent loop implementation
+│   │   ├── prompts/   # Agent-specific prompts
+│   │   └── codex/     # Codex integration
 │   └── mcp/           # MCP configurations
 │       └── default-config.json
 └── README.md

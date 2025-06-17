@@ -758,6 +758,37 @@ EOF
     fi
 }
 
+# Setup Multi-Agent Framework
+setup_agent_framework() {
+    local agents_cmd=".claude/commands/apm-agents.md"
+    local agents_lib="$SCRIPT_DIR/lib/agents/claudebox-agents"
+    
+    # Ensure directories exist
+    mkdir -p .claude/bin
+    
+    # Copy the agents command if it exists in lib
+    if [[ -f "$SCRIPT_DIR/lib/apm/commands/apm-agents.md" ]]; then
+        cp "$SCRIPT_DIR/lib/apm/commands/apm-agents.md" "$agents_cmd"
+    fi
+    
+    # Ensure the agents executable is available
+    if [[ -f "$agents_lib" ]]; then
+        # Create a wrapper script that can be executed from within the container
+        cat << 'EOF' > .claude/bin/apm-agents
+#!/bin/bash
+# Wrapper for the multi-agent framework
+
+# Source the actual implementation
+exec /workspace/lib/agents/claudebox-agents "$@"
+EOF
+        chmod +x .claude/bin/apm-agents
+        
+        info "Multi-agent framework initialized"
+    else
+        warn "Multi-agent framework not found in lib/agents/"
+    fi
+}
+
 run_docker_build() {
     info "Running docker build..."
     docker build \
@@ -1201,6 +1232,7 @@ main() {
     setup_claude_agent_command
     setup_apm_commands
     setup_apm_docs
+    setup_agent_framework
     
     # First run help message
     local first_run_flag="$HOME/.claudebox/.not-first-run"
