@@ -19,11 +19,12 @@ chmod +x claudebox
 - **OpenRouter AI** - Access to multiple LLM models (GPT-4, Claude, Gemini, etc.)
 
 ### 📋 **Agentic Project Management (APM)**
-Complete framework for managing complex projects with specialized AI agents:
-- Manager Agents for orchestration and planning
-- Implementation Agents for task execution
-- Integrated Memory Bank with MCP persistence
-- Structured handover protocols
+Revolutionary framework that brings real-world project management to AI-assisted development:
+- **Manager Agents** orchestrate entire projects, creating detailed implementation plans
+- **Implementation Agents** execute specific tasks with laser focus
+- **Memory Bank** system preserves context across sessions using MCP persistence
+- **Handover Protocols** ensure seamless transitions when context windows fill
+- **Structured Workflows** that scale from simple scripts to enterprise applications
 
 ### 🛠️ **15+ Development Profiles**
 Pre-configured environments for every stack:
@@ -59,17 +60,43 @@ claudebox shell               # Open container shell
 claudebox update              # Update Claude CLI
 ```
 
-### APM Commands (Use within Claude)
+### 🤖 Agentic Project Management (APM) Workflow
 
+The APM framework revolutionizes how you manage complex AI-assisted projects by addressing context window limitations through structured agent coordination:
+
+#### Quick Start with APM
 ```bash
-/apm-manager      # Initialize Manager Agent
-/apm-implement    # Create Implementation Agent
-/apm-task         # Generate task assignments
-/apm-memory       # Manage Memory Bank
-/apm-handover     # Execute handover protocol
-/apm-plan         # Manage Implementation Plan
-/apm-review       # Review completed work
+# 1. Start your project with a Manager Agent
+/apm-manager
+
+# 2. Manager creates Implementation Plan and assigns tasks
+# 3. Launch Implementation Agents for specific tasks
+/apm-implement
+
+# 4. Agents work autonomously, logging to Memory Bank
+# 5. Review progress and iterate
+/apm-review
 ```
+
+#### APM Commands (Use within Claude)
+```bash
+/apm-manager      # Initialize Manager Agent - always start here
+/apm-implement    # Create Implementation Agent for task execution
+/apm-task         # Generate detailed task assignments
+/apm-memory       # View/manage Memory Bank (persistent knowledge base)
+/apm-handover     # Execute smooth handover when context limits approach
+/apm-plan         # View/update Implementation Plan
+/apm-review       # Manager reviews completed work
+```
+
+#### How APM Works
+1. **Manager Agent** creates a comprehensive Implementation Plan breaking down your project
+2. **Memory Bank** (integrated with MCP) preserves all decisions, code, and context
+3. **Implementation Agents** execute specific tasks with focused context
+4. **Handover Protocol** ensures seamless transitions between agents
+5. **Structured Logging** maintains project continuity across sessions
+
+Perfect for: Multi-day projects, complex refactoring, large feature development, or any work that exceeds single context windows.
 
 ### Environment Variables
 
