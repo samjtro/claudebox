@@ -933,7 +933,7 @@ main() {
                 "
             else
                 docker exec -it -u "$DOCKER_USER" "$temp_container" \
-                    /home/$DOCKER_USER/claude-wrapper "${DEFAULT_FLAGS[@]}" "$cmd" "$@"
+                    /home/$DOCKER_USER/claude-wrapper ${DEFAULT_FLAGS[@]+"${DEFAULT_FLAGS[@]}"} "$cmd" "$@"
             fi
 
             # Commit changes back to image
@@ -1411,7 +1411,7 @@ fi
 export DISABLE_FIREWALL
 if [ ! -f /home/USERNAME/.firewall-initialized ]; then
     if [ -f /home/USERNAME/init-firewall.sh ]; then
-        su USERNAME -c "bash /home/USERNAME/init-firewall.sh"
+        bash /home/USERNAME/init-firewall.sh
         touch /home/USERNAME/.firewall-initialized
     fi
 fi
@@ -1873,7 +1873,7 @@ EOF
        ${extra_mounts[@]+"${extra_mounts[@]}"} \
        --cap-add NET_ADMIN \
        --cap-add NET_RAW \
-       "$IMAGE_NAME" "${DEFAULT_FLAGS[@]}" "$@"
+       "$IMAGE_NAME" ${DEFAULT_FLAGS[@]+"${DEFAULT_FLAGS[@]}"} "$@"
 }
 
 main "$@"
