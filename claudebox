@@ -779,12 +779,14 @@ EOF
 
 run_docker_build() {
     info "Running docker build..."
+    local dockerfile="$1"
+    local build_dir="$2"
     docker build \
         --build-arg USER_ID="$USER_ID" \
         --build-arg GROUP_ID="$GROUP_ID" \
         --build-arg USERNAME="$DOCKER_USER" \
         --build-arg NODE_VERSION="$NODE_VERSION" \
-        -f "$1" -t "$IMAGE_NAME" .
+        -f "$dockerfile" -t "$IMAGE_NAME" "$build_dir"
 }
 
 # Main execution
@@ -1290,12 +1292,15 @@ main() {
     if [[ "$need_rebuild" == "true" ]] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
         logo
         local dockerfile
-        # Use current directory instead of /tmp to avoid macOS xattr issues
+        # Create a temporary build directory
         local build_timestamp=$(date +%s)
-        dockerfile="$(pwd)/.claudebox-dockerfile.$build_timestamp.tmp"
-        local firewall_script="$(pwd)/.claudebox-firewall.$build_timestamp.tmp"
-        local entrypoint_script="$(pwd)/.claudebox-entrypoint.$build_timestamp.tmp"
-        trap "rm -f '$dockerfile' '$firewall_script' '$entrypoint_script'" EXIT
+        local build_dir="/tmp/claudebox-build-$build_timestamp"
+        mkdir -p "$build_dir"
+        trap "rm -rf '$build_dir'" EXIT
+        
+        dockerfile="$build_dir/Dockerfile"
+        local firewall_script="$build_dir/.claudebox-firewall.tmp"
+        local entrypoint_script="$build_dir/.claudebox-entrypoint.tmp"
 
         # Create firewall script
         cat > "$firewall_script" <<'FIREWALL_SCRIPT'
@@ -1575,9 +1580,9 @@ RUN bash -c "source $NVM_DIR/nvm.sh && \
     nvm use default && \
     npm install -g @anthropic-ai/claude-code"
 
-# Copy firewall script
+# Copy firewall script (use specific filename from build context)
 USER root
-COPY --chown=$USERNAME:$USERNAME .claudebox-firewall.*.tmp /home/$USERNAME/init-firewall.sh
+COPY --chown=$USERNAME:$USERNAME .claudebox-firewall.tmp /home/$USERNAME/init-firewall.sh
 RUN chmod +x /home/$USERNAME/init-firewall.sh
 USER $USERNAME
 
@@ -1710,14 +1715,14 @@ WORKDIR /workspace
 
 USER root
 # Copy entrypoint script
-COPY .claudebox-entrypoint.*.tmp /usr/local/bin/docker-entrypoint
+COPY .claudebox-entrypoint.tmp /usr/local/bin/docker-entrypoint
 
 RUN chmod +x /usr/local/bin/docker-entrypoint
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
 DOCKERFILE
 
-        run_docker_build "$dockerfile"
+        run_docker_build "$dockerfile" "$build_dir"
 
         echo -e "\n${GREEN}Complete!${NC}\n"
         success "Docker image '$IMAGE_NAME' built!"
@@ -1865,10 +1870,10 @@ EOF
        -e "NODE_OPTIONS=--max-old-space-size=4096" \
        -e "POWERLEVEL9K_DISABLE_GITSTATUS=true" \
        -e "CLAUDEBOX_PROJECT_DIR=$PROJECT_DIR" \
-       "${extra_mounts[@]}" \
+       ${extra_mounts[@]+"${extra_mounts[@]}"} \
        --cap-add NET_ADMIN \
        --cap-add NET_RAW \
-       "$IMAGE_NAME" "${DEFAULT_FLAGS[@]}" "${RUN_ARGS[@]:-$@}"
+       "$IMAGE_NAME" "${DEFAULT_FLAGS[@]}" "$@"
 }
 
 main "$@"
