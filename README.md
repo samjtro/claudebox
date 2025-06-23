@@ -26,13 +26,11 @@ The Ultimate Claude Code Docker Development Environment - Run Claude AI's coding
 
 - **Per-Project Docker Images**: Each project now maintains its own Docker image for complete isolation
 - **Intelligent Layer Caching**: Optimized Docker builds with profile-specific layer caching
-- **Task Engine**: Built-in compact task engine for reliable code generation (`/task`)
+- **Task Engine**: Built-in compact task engine for reliable code generation (`/taskengine`)
 - **Automatic Profile Rebuilding**: Detects profile changes and rebuilds automatically
 - **Enhanced Firewall Templates**: Pre-configured allowlists for GitHub, GitLab, and Bitbucket
 - **Project-Specific Claude Config**: Each project can have its own `.claude.json` settings
 - **Profile Dependencies**: Smart dependency resolution (e.g., C profile includes build tools)
-- **Nala Package Manager**: Faster, more user-friendly package management
-- **Pinned Tool Versions**: Installs git-delta version 0.17.0 and other fixed tool versions
 
 ## ✨ Features
 
