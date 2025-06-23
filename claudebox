@@ -10,7 +10,7 @@ readonly GROUP_ID=$(id -g)
 readonly PROJECT_DIR="$(pwd)"
 
 # ────────────────────────────────────────────────────────────────────────────────
-#  Cross‑platform host detection (Linux vs. macOS) and FS case‑sensitivity check
+#  Cross-platform host detection (Linux vs. macOS) and FS case-sensitivity check
 # ────────────────────────────────────────────────────────────────────────────────
 OS_TYPE="$(uname -s)"
 case "$OS_TYPE" in
@@ -127,7 +127,7 @@ logo() {
 update_symlink() {
     # Ensure the directory exists
     mkdir -p "$(dirname "$LINK_TARGET")"
-    
+
     # Check if symlink exists and points to the correct location
     if [[ -L "$LINK_TARGET" ]]; then
         local current_target
@@ -144,7 +144,7 @@ update_symlink() {
         # Something else exists at this path
         error "Cannot create symlink: $LINK_TARGET already exists and is not a symlink"
     fi
-    
+
     # Create new symlink
     if ln -s "$SCRIPT_PATH" "$LINK_TARGET"; then
         success "Symlink updated: $LINK_TARGET → $SCRIPT_PATH"
@@ -602,7 +602,7 @@ if [ -d /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME ]; then
         cp /home/DOCKERUSER/.claude.json.host /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.claude.json
         chown DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.claude.json
     fi
-    
+
     # If project-specific .claude.json exists, symlink it
     if [ -f /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.claude.json ]; then
         rm -f /home/DOCKERUSER/.claude.json
@@ -720,7 +720,7 @@ main() {
             new_args+=("$arg")
         fi
     done
-    
+
     if [[ "$found_rebuild" == "true" ]]; then
         # Compute IMAGE_NAME for rebuild
         local project_folder_name
@@ -741,7 +741,7 @@ main() {
     project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
     IMAGE_NAME="claudebox-${project_folder_name}"
     PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/$project_folder_name"
-    
+
     # Handle help immediately
     if [[ "$found_help" == "true" ]]; then
         if docker image inspect "$IMAGE_NAME" &>/dev/null; then
@@ -841,7 +841,7 @@ main() {
                 success "Saved default flags: $*"
             fi
             exit 0
-			;;
+                        ;;
         install)
             shift
             [[ $# -eq 0 ]] && error "No packages specified. Usage: claudebox install <package1> <package2> ..."
@@ -868,9 +868,9 @@ main() {
         update|config|mcp|migrate-installer)
             [[ ! -f /.dockerenv ]] && docker image inspect "$IMAGE_NAME" &>/dev/null || \
                 error "ClaudeBox image not found.\nRun ${GREEN}claudebox${NC} first to build the image."
-			local project_folder_name
-			project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-			IMAGE_NAME="claudebox-${project_folder_name}"
+                        local project_folder_name
+                        project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+                        IMAGE_NAME="claudebox-${project_folder_name}"
             local cmd=$1
             shift
 
@@ -1036,7 +1036,7 @@ main() {
                     if [[ -d "$project_claudebox_dir" ]]; then
                         rm -rf "$project_claudebox_dir"
                         success "Removed project data folder: $project_claudebox_dir"
-    
+
     # Remove project Docker image
     docker rmi -f "$image_name" 2>/dev/null || true
     success "Removed project Docker image: $image_name"
@@ -1234,12 +1234,12 @@ main() {
         need_rebuild=true
     fi
 
-	# Build image if needed
-	if [[ "$need_rebuild" == "true" ]] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-		logo
-		local build_context="$HOME/.claudebox/build"
-		mkdir -p "$build_context"
-		local dockerfile="$build_context/Dockerfile"
+        # Build image if needed
+        if [[ "$need_rebuild" == "true" ]] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+                logo
+                local build_context="$HOME/.claudebox/build"
+                mkdir -p "$build_context"
+                local dockerfile="$build_context/Dockerfile"
 
         create_build_files "$build_context"
 
@@ -1253,16 +1253,19 @@ RUN echo '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/pol
 
 # Install locales first to fix locale warnings
 RUN export DEBIAN_FRONTEND=noninteractive && \
-    apt-get update -qq && \
-	apt-get install -y --no-autoremove --no-install-recommends nala curl locales && apt-get clean && \
+    apt-get update && \
+        apt-get install -y --no-autoremove --no-install-recommends ca-certificates curl locales gnupg && apt-get clean && \
     echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen en_US.UTF-8 &&\
-	curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
-    chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+        mkdir -p /usr/share/keyrings && \
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /tmp/githubcli.gpg && \
+        cat /tmp/githubcli.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+        rm -f /tmp/githubcli.gpg && \
+    chmod 644 /usr/share/keyrings/githubcli-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg]" \
-    "https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && nala --assume-yes update && \
-	nala install -y --no-autoremove --no-install-recommends apt-utils wget zsh fzf gnupg ca-certificates sudo git iptables ipset gh unzip jq \
-	sudo procps vim nano less ca-certificates && \
-	rm -rf /var/lib/apt/lists/*
+    "https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && \
+        apt-get install -y --no-autoremove --no-install-recommends apt-utils wget zsh fzf ca-certificates sudo git iptables ipset gh unzip jq \
+        procps vim nano less && \
+        rm -rf /var/lib/apt/lists/*
 
 # Set locale environment variables
 ENV LANG=en_US.UTF-8 \
@@ -1337,80 +1340,80 @@ RUN bash -c "source $NVM_DIR/nvm.sh && \
 # Install profile packages as separate layers for better caching
 USER root
 DOCKERFILE
-	if [[ ${#current_profiles[@]} -gt 0 ]]; then
-		info "Building with profiles: ${current_profiles[*]}"
+        if [[ ${#current_profiles[@]} -gt 0 ]]; then
+                info "Building with profiles: ${current_profiles[*]}"
 
-		# Resolve and deduplicate all dependency layers
-		resolved_profiles=()
-		for profile in "${current_profiles[@]}"; do
-			resolved_profiles+=($(expand_profile "$profile"))
-		done
+                # Resolve and deduplicate all dependency layers
+                resolved_profiles=()
+                for profile in "${current_profiles[@]}"; do
+                        resolved_profiles+=($(expand_profile "$profile"))
+                done
 
-		unique_profiles=($(awk -v RS=' ' '!seen[$1]++' <<< "${resolved_profiles[*]}"))
+                unique_profiles=($(awk -v RS=' ' '!seen[$1]++' <<< "${resolved_profiles[*]}"))
 
-		# APT install layers (1 per profile)
-		for profile in "${unique_profiles[@]}"; do
-			pkg_list=(${PROFILES[$profile]:-})
-			[[ ${#pkg_list[@]} -eq 0 ]] && continue
+                # APT install layers (1 per profile)
+                for profile in "${unique_profiles[@]}"; do
+                        pkg_list=(${PROFILES[$profile]:-})
+                        [[ ${#pkg_list[@]} -eq 0 ]] && continue
 
         cat >> "$dockerfile" <<DOCKERFILE
 # ${PROFILE_DESCRIPTIONS[$profile]}
 RUN export DEBIAN_FRONTEND=noninteractive && \\
-        nala --assume-yes update && \\
-        nala install -y --no-autoremove ${pkg_list[*]} && \\
-        nala clean && rm -rf /var/lib/apt/lists/*
+        apt-get update && \\
+        apt-get install -y --no-autoremove ${pkg_list[*]} && \\
+        apt-get clean && rm -rf /var/lib/apt/lists/*
 DOCKERFILE
-				case "$profile" in
-					rust)
-						cat >> "$dockerfile" <<'DOCKERFILE'
+                                case "$profile" in
+                                        rust)
+                                                cat >> "$dockerfile" <<'DOCKERFILE'
 USER $USERNAME
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-	echo 'source $HOME/.cargo/env' >> ~/.bashrc && \
-	echo 'source $HOME/.cargo/env' >> ~/.zshrc
+        echo 'source $HOME/.cargo/env' >> ~/.bashrc && \
+        echo 'source $HOME/.cargo/env' >> ~/.zshrc
 USER root
 DOCKERFILE
-						;;
-					go)
-						cat >> "$dockerfile" <<'DOCKERFILE'
+                                                ;;
+                                        go)
+                                                cat >> "$dockerfile" <<'DOCKERFILE'
 RUN GO_VERSION="1.21.5" && \
-	wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" && \
-	tar -C /usr/local -xzf "go${GO_VERSION}.linux-amd64.tar.gz" && \
-	rm "go${GO_VERSION}.linux-amd64.tar.gz" && \
-	echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
+        wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" && \
+        tar -C /usr/local -xzf "go${GO_VERSION}.linux-amd64.tar.gz" && \
+        rm "go${GO_VERSION}.linux-amd64.tar.gz" && \
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
 DOCKERFILE
-						;;
-					python)
-						cat >> "$dockerfile" <<'DOCKERFILE'
+                                                ;;
+                                        python)
+                                                cat >> "$dockerfile" <<'DOCKERFILE'
 USER $USERNAME
 RUN ~/.local/bin/uv pip install ipython black mypy pylint pytest ruff poetry pipenv
 USER root
 DOCKERFILE
-						;;
-					ml)
-						cat >> "$dockerfile" <<'DOCKERFILE'
+                                                ;;
+                                        ml)
+                                                cat >> "$dockerfile" <<'DOCKERFILE'
 USER $USERNAME
 RUN ~/.local/bin/uv pip install torch transformers scikit-learn numpy pandas matplotlib
 USER root
 DOCKERFILE
-						;;
-					datascience)
-						cat >> "$dockerfile" <<'DOCKERFILE'
+                                                ;;
+                                        datascience)
+                                                cat >> "$dockerfile" <<'DOCKERFILE'
 USER $USERNAME
 RUN ~/.local/bin/uv pip install jupyter notebook jupyterlab numpy pandas scipy matplotlib seaborn scikit-learn statsmodels plotly
 USER root
 DOCKERFILE
-						;;
-					javascript)
-						cat >> "$dockerfile" <<'DOCKERFILE'
+                                                ;;
+                                        javascript)
+                                                cat >> "$dockerfile" <<'DOCKERFILE'
 USER $USERNAME
 RUN bash -c "source \$NVM_DIR/nvm.sh && npm install -g typescript eslint prettier yarn pnpm"
 USER root
 DOCKERFILE
-						;;
-					*) : ;;
-				esac
-			done
-		fi
+                                                ;;
+                                        *) : ;;
+                                esac
+                        done
+                fi
 
         # Add label with profile hash
         echo "# Label the image with the profile hash for change detection" >> "$dockerfile"
@@ -1552,14 +1555,14 @@ github-production-release-asset-2e65be.s3.amazonaws.com
 EOF
        success "Created default allowlist"
    fi
-   
+
    set -- "${DEFAULT_FLAGS[@]}" "$@"
-   
+
    # Build Docker arguments
    local docker_args=()
    [[ "$ENABLE_SUDO" == "true" ]] && docker_args+=("--enable-sudo")
    [[ "$DISABLE_FIREWALL" == "true" ]] && docker_args+=("--disable-firewall")
-   
+
    docker run -it --rm --init \
        -w /workspace \
        -v "$PROJECT_DIR":/workspace \
