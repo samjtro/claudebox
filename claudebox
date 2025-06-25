@@ -791,7 +791,9 @@ main() {
 
             local selected=() remaining=()
             while [[ $# -gt 0 ]]; do
-                if [[ -n "${PROFILES[$1]:-}" ]]; then
+                # accept profiles even if the value is empty
+                # check that the key exists in the PROFILES associative array
+                if [[ -v PROFILES[$1] ]]; then
                     selected+=("$1")
                     shift
                 else
