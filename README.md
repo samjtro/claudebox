@@ -399,6 +399,13 @@ Made with ❤️ for developers who love clean, reproducible environments
 
 ## 📝 Changelog
 
+### v1.0.0-rc4
+- **Directory Restructuring**: Projects now organized under `~/.claudebox/projects/` for cleaner separation
+- **Consolidated Configuration**: Single `config.ini` per project replaces multiple config files
+- **Fixed JSON Handling**: Proper initialization of `.claude.json` prevents auth loss and parse errors
+- **Smart -c Flag Filtering**: Auto-removes continue flag when no conversation exists
+- **Improved Project Management**: Better project listing with size/status display
+
 ### v1.0.0-rc3
 - **Flag Prioritizer System**: Implemented robust flag sorting to ensure control flags are processed in correct order
 - **Fixed Shell Mode Bug**: Shell command now works properly with saved flags
