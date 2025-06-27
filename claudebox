@@ -328,13 +328,109 @@ docker_exec_user() {
 
 # Helper functions for project profiles
 get_project_folder_name() {
-    echo "$1" | sed 's|^/||; s|[^a-zA-Z0-9]|_|g; s|_+|_|g; s|^_||; s|_$||'
+    # Generate lowercase name with hash suffix for uniqueness
+    local clean_name=$(echo "$1" | sed 's|^/||; s|[^a-zA-Z0-9]|_|g; s|_+|_|g; s|^_||; s|_$||' | tr '[:upper:]' '[:lower:]')
+    local hash=$(echo -n "$1" | sha256sum | cut -c1-6)
+    echo "${clean_name}_${hash}"
 }
 
 get_profile_file_path() {
-    local profile_dir="$HOME/.claudebox/profiles"
-    mkdir -p "$profile_dir"
-    echo "$profile_dir/$(echo "$PROJECT_DIR" | sed 's|/|-|g' | sed 's|^-||').ini"
+    local project_id=$(get_project_folder_name "$PROJECT_DIR")
+    local project_dir="$HOME/.claudebox/projects/$project_id"
+    mkdir -p "$project_dir"
+    echo "$project_dir/config.ini"
+}
+
+# Read a value from config.ini
+read_config_value() {
+    local config_file="$1"
+    local section="$2"
+    local key="$3"
+    
+    [[ -f "$config_file" ]] || return 1
+    
+    # Use awk to extract value from INI file
+    awk -F ' *= *' -v section="[$section]" -v key="$key" '
+        $0 == section { in_section=1; next }
+        /^\[/ { in_section=0 }
+        in_section && $1 == key { print $2; exit }
+    ' "$config_file"
+}
+
+# Get project ID from path
+get_project_by_path() {
+    local search_path="$1"
+    local abs_path=$(realpath "$search_path" 2>/dev/null || echo "$search_path")
+    
+    # Check all project directories for matching path in config.ini
+    for project_dir in "$HOME/.claudebox/projects"/*/ ; do
+        [[ -d "$project_dir" ]] || continue
+        
+        local config_file="$project_dir/config.ini"
+        [[ -f "$config_file" ]] || continue
+        
+        local stored_path=$(read_config_value "$config_file" "project" "path")
+        if [[ "$stored_path" == "$abs_path" ]]; then
+            basename "$project_dir"
+            return 0
+        fi
+    done
+    
+    return 1
+}
+
+# List all projects with their paths
+list_all_projects() {
+    local projects_found=0
+    
+    for project_dir in "$HOME/.claudebox/projects"/*/ ; do
+        [[ -d "$project_dir" ]] || continue
+        
+        projects_found=1
+        local project_id=$(basename "$project_dir")
+        local original_path="(unknown)"
+        local image_status="❌"
+        local image_size="-"
+        
+        # Get original path from config.ini
+        local config_file="$project_dir/config.ini"
+        if [[ -f "$config_file" ]]; then
+            local path_value=$(read_config_value "$config_file" "project" "path")
+            [[ -n "$path_value" ]] && original_path="$path_value"
+        fi
+        
+        # Check Docker image
+        local image_name="claudebox-${project_id}"
+        if docker image inspect "$image_name" &>/dev/null; then
+            image_status="✅"
+            image_size=$(docker images --filter "reference=$image_name" --format "{{.Size}}")
+        fi
+        
+        printf "%10s  %s  %s\n" "$image_size" "$image_status" "$original_path"
+    done
+    
+    [[ $projects_found -eq 0 ]] && return 1
+    return 0
+}
+
+# Resolve project path from current directory or argument
+resolve_project_path() {
+    local input_path="${1:-$PWD}"
+    
+    # If it's already a project ID (contains underscore and ends with hash)
+    if [[ "$input_path" =~ _[a-f0-9]{6}$ ]] && [[ -d "$HOME/.claudebox/$input_path" ]]; then
+        echo "$input_path"
+        return 0
+    fi
+    
+    # Otherwise treat as path and look up project
+    local project_id=$(get_project_by_path "$input_path")
+    if [[ -n "$project_id" ]]; then
+        echo "$project_id"
+        return 0
+    fi
+    
+    return 1
 }
 
 read_profile_section() {
@@ -402,14 +498,29 @@ update_profile_section() {
 
 # Project-specific folder setup
 setup_project_folder() {
-    # Firewall configuration
-    mkdir -p "$PROJECT_CLAUDEBOX_DIR/firewall"
-    
     # Create mount points for Docker volumes
     mkdir -p "$PROJECT_CLAUDEBOX_DIR/.claude"
     mkdir -p "$PROJECT_CLAUDEBOX_DIR/.config"
-    touch "$PROJECT_CLAUDEBOX_DIR/.claude.json"
-    touch "$PROJECT_CLAUDEBOX_DIR/.zsh_history"
+    mkdir -p "$PROJECT_CLAUDEBOX_DIR/.cache"
+    # Only create .claude.json if it doesn't exist
+    if [[ ! -f "$PROJECT_CLAUDEBOX_DIR/.claude.json" ]]; then
+        echo '{}' > "$PROJECT_CLAUDEBOX_DIR/.claude.json"
+    fi
+    
+    # Initialize config.ini with project path if it doesn't exist
+    local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
+    if [[ ! -f "$config_file" ]]; then
+        cat > "$config_file" <<EOF
+[project]
+path = $PROJECT_DIR
+
+[profiles]
+
+[packages]
+
+[firewall]
+EOF
+    fi
 }
 
 
@@ -489,27 +600,34 @@ iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 # Default allowed domains
 DEFAULT_DOMAINS="api.anthropic.com console.anthropic.com statsig.anthropic.com sentry.io"
 
-# Read additional domains from allowlist file if it exists
+# Read additional domains from config.ini [firewall] section
 ALLOWED_DOMAINS="$DEFAULT_DOMAINS"
-# Try project-specific allowlist first, then fall back to global
-if [ -f /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/firewall/allowlist ]; then
-    while IFS= read -r domain; do
-        # Skip comments and empty lines
-        [[ "$domain" =~ ^#.* ]] && continue
-        [[ -z "$domain" ]] && continue
-        # Remove wildcards for now (*.example.com becomes example.com)
-        domain="${domain#\*.}"
-        ALLOWED_DOMAINS="$ALLOWED_DOMAINS $domain"
-    done < /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/firewall/allowlist
-elif [ -f /home/DOCKERUSER/.claudebox/allowlist ]; then
-    while IFS= read -r domain; do
-        # Skip comments and empty lines
-        [[ "$domain" =~ ^#.* ]] && continue
-        [[ -z "$domain" ]] && continue
-        # Remove wildcards for now (*.example.com becomes example.com)
-        domain="${domain#\*.}"
-        ALLOWED_DOMAINS="$ALLOWED_DOMAINS $domain"
-    done < /home/DOCKERUSER/.claudebox/allowlist
+# Try project-specific config.ini
+CONFIG_FILE="/home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/config.ini"
+if [ -f "$CONFIG_FILE" ]; then
+    # Read firewall section from config.ini
+    in_firewall=0
+    while IFS= read -r line; do
+        # Check if we're entering firewall section
+        if [[ "$line" == "[firewall]" ]]; then
+            in_firewall=1
+            continue
+        fi
+        # Check if we're leaving the section
+        if [[ "$line" =~ ^\[.*\]$ ]] && [ $in_firewall -eq 1 ]; then
+            break
+        fi
+        # Process lines in firewall section
+        if [ $in_firewall -eq 1 ]; then
+            # Skip comments and empty lines
+            [[ "$line" =~ ^#.* ]] && continue
+            [[ -z "$line" ]] && continue
+            # Remove wildcards for now (*.example.com becomes example.com)
+            domain="${line#\*.}"
+            domain="$(echo "$domain" | xargs)" # Trim whitespace
+            [[ -n "$domain" ]] && ALLOWED_DOMAINS="$ALLOWED_DOMAINS $domain"
+        fi
+    done < "$CONFIG_FILE"
 fi
 
 if command -v ipset >/dev/null 2>&1; then
@@ -590,6 +708,17 @@ done
 set -- "${new_args[@]}"
 export DISABLE_FIREWALL
 
+# Initialize firewall FIRST (before any mode checks)
+if [ -f ~/init-firewall ]; then
+    ~/init-firewall || true
+fi
+
+# Set up sudo if requested
+if [ "$ENABLE_SUDO" = "true" ]; then
+    echo "DOCKERUSER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/DOCKERUSER
+    chmod 0440 /etc/sudoers.d/DOCKERUSER
+fi
+
 # Set up shared commands
 if [ -d /home/DOCKERUSER/.claudebox/commands ]; then
     # Ensure .claude/commands directory exists
@@ -602,38 +731,33 @@ if [ -d /home/DOCKERUSER/.claudebox/commands ]; then
     chown -R DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claude
 fi
 
-if [ -f ~/init-firewall ]; then
-    ~/init-firewall || true
-fi
-if [ "$ENABLE_SUDO" = "true" ]; then
-    echo "DOCKERUSER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/DOCKERUSER
-    chmod 0440 /etc/sudoers.d/DOCKERUSER
-fi
-
 if [ -n "$CLAUDEBOX_PROJECT_NAME" ]; then
-    PROFILE_FILE="/home/DOCKERUSER/.claudebox/profiles/${CLAUDEBOX_PROJECT_NAME}.ini"
+    CONFIG_FILE="/home/DOCKERUSER/.claudebox/projects/${CLAUDEBOX_PROJECT_NAME}/config.ini"
 
-    if command -v uv >/dev/null 2>&1 && [ -f "$PROFILE_FILE" ] && grep -qE 'python|ml|datascience' "$PROFILE_FILE"; then
-        if [ ! -d /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.venv ]; then
-            su - DOCKERUSER -c "uv venv /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.venv"
+    if command -v uv >/dev/null 2>&1 && [ -f "$CONFIG_FILE" ] && grep -qE 'python|ml|datascience' "$CONFIG_FILE"; then
+        if [ ! -d /home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/.venv ]; then
+            su - DOCKERUSER -c "uv venv /home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/.venv"
             if [ -f /workspace/pyproject.toml ]; then
                 su - DOCKERUSER -c "cd /workspace && uv sync"
             else
-                su - DOCKERUSER -c "uv pip install --python /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.venv/bin/python ipython black pylint mypy flake8 pytest ruff"
+                su - DOCKERUSER -c "uv pip install --python /home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/.venv/bin/python ipython black pylint mypy flake8 pytest ruff"
             fi
         fi
 
         for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
-            if ! grep -q "source /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.venv/bin/activate" "$shell_rc"; then
-                echo 'if [ -f /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.venv/bin/activate ]; then source /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.venv/bin/activate; fi' >> "$shell_rc"
+            if ! grep -q "source /home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/.venv/bin/activate" "$shell_rc"; then
+                echo 'if [ -f /home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/.venv/bin/activate ]; then source /home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/.venv/bin/activate; fi' >> "$shell_rc"
             fi
         done
     fi
 fi
 
 cd /home/DOCKERUSER
+
 # Check if we're in shell mode
 if [[ "${SHELL_MODE:-false}" == "true" ]]; then
+    # Clean up claude-wrapper for shell mode - keep home directory clean
+    rm -f /home/DOCKERUSER/claude-wrapper
     exec su DOCKERUSER -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
 else
     # Build command with properly quoted arguments
@@ -730,7 +854,7 @@ main() {
         IMAGE_NAME="claudebox-${project_folder_name}"
     project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
     IMAGE_NAME="claudebox-${project_folder_name}"
-    PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/$project_folder_name"
+    PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/projects/$project_folder_name"
     
     # Ensure project directory exists
     mkdir -p "$PROJECT_CLAUDEBOX_DIR"
@@ -750,6 +874,7 @@ main() {
             echo
             cecho "Added Commands:" "$WHITE"
             echo -e "  profiles                        List all available profiles"
+            echo -e "  projects                        List all projects with paths"
             echo -e "  profile                         Profile management menu"
             echo -e "  install <packages>              Install apt packages"
             echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
@@ -779,6 +904,26 @@ main() {
             for profile in $(printf '%s\n' "${!PROFILE_DESCRIPTIONS[@]}" | sort); do
                 echo -e "  ${GREEN}$profile${NC} - ${PROFILE_DESCRIPTIONS[$profile]}"
             done
+            exit 0
+            ;;
+            
+        projects)
+            # List all projects with their paths
+            shift
+            cecho "ClaudeBox Projects:" "$CYAN"
+            echo
+            printf "%10s  %s  %s\n" "Size" "🐳" "Path"
+            printf "%10s  %s  %s\n" "----" "--" "----"
+            
+            if ! list_all_projects; then
+                echo
+                warn "No ClaudeBox projects found."
+                echo
+                cecho "Start a new project:" "$GREEN"
+                echo "  cd /your/project/directory"
+                echo "  claudebox"
+            fi
+            echo
             exit 0
             ;;
             
@@ -983,31 +1128,50 @@ main() {
             # Compute project info
             local project_folder_name
             project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-            PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/$project_folder_name"
-            local allowlist_file="$PROJECT_CLAUDEBOX_DIR/firewall/allowlist"
+            PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/projects/$project_folder_name"
+            local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
             
             cecho "🔒 ClaudeBox Firewall Allowlist" "$CYAN"
             echo
             cecho "Current Project: $PROJECT_DIR" "$WHITE"
             echo
             
-            if [[ -f "$allowlist_file" ]]; then
-                cecho "Project Allowlist:" "$GREEN"
-                echo "  $allowlist_file"
+            if [[ -f "$config_file" ]]; then
+                cecho "Project Configuration:" "$GREEN"
+                echo "  $config_file"
                 echo
-                cat "$allowlist_file"
+                cecho "Firewall Allowlist:" "$CYAN"
+                # Display only firewall section
+                local in_firewall=0
+                while IFS= read -r line; do
+                    if [[ "$line" == "[firewall]" ]]; then
+                        in_firewall=1
+                        continue
+                    fi
+                    if [[ "$line" =~ ^\[.*\]$ ]] && [ $in_firewall -eq 1 ]; then
+                        break
+                    fi
+                    if [ $in_firewall -eq 1 ] && [[ -n "$line" ]]; then
+                        echo "  $line"
+                    fi
+                done < "$config_file"
+                
+                if [ $in_firewall -eq 0 ]; then
+                    echo "  (empty)"
+                fi
             else
-                cecho "Project Allowlist:" "$YELLOW"
+                cecho "Project Configuration:" "$YELLOW"
                 echo "  Not yet created (will be created on first run)"
-                echo "  Location: $allowlist_file"
+                echo "  Location: $config_file"
             fi
             
             echo
-            cecho "Default Allowlist Template:" "$CYAN"
-            echo "  When created, includes GitHub, GitLab, Bitbucket, and Anthropic domains"
+            cecho "Default Allowed Domains:" "$CYAN"
+            echo "  api.anthropic.com, console.anthropic.com, statsig.anthropic.com, sentry.io"
             echo
             cecho "To edit allowlist:" "$YELLOW"
-            echo "  \$EDITOR $allowlist_file"
+            echo "  \$EDITOR $config_file"
+            echo "  (Edit the [firewall] section)"
             echo
             cecho "Note:" "$WHITE"
             echo "  Changes take effect on next container start"
@@ -1095,25 +1259,55 @@ main() {
                     ;;
                 --project|-p)
                     shift
+                    
+                    # Check if a path was provided after --project
+                    local target_path="$PROJECT_DIR"
                     local project_folder_name
-                    project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-                    local project_claudebox_dir="$HOME/.claudebox/$project_folder_name"
+                    
+                    # If next arg exists and doesn't start with -, treat as path
+                    if [[ $# -gt 0 ]] && [[ "${1:0:1}" != "-" ]] && [[ "$1" != "all" && "$1" != "data" && "$1" != "docker" && "$1" != "profiles" && "$1" != "tools" ]]; then
+                        target_path="$1"
+                        shift
+                        
+                        # Try to resolve the project from the path
+                        project_folder_name=$(resolve_project_path "$target_path")
+                        if [[ -z "$project_folder_name" ]]; then
+                            error "No ClaudeBox project found at: $target_path"
+                        fi
+                    else
+                        # Use current directory
+                        project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+                    fi
+                    
+                    local project_claudebox_dir="$HOME/.claudebox/projects/$project_folder_name"
                     local image_name="claudebox-${project_folder_name}"
-                    local profile_file
-                    profile_file=$(get_profile_file_path)
+                    
+                    # Get original path for display
+                    local display_path="$PROJECT_DIR"
+                    local config_file="$project_claudebox_dir/config.ini"
+                    if [[ -f "$config_file" ]]; then
+                        local path_value=$(read_config_value "$config_file" "project" "path")
+                        [[ -n "$path_value" ]] && display_path="$path_value"
+                    fi
                     
                     case "${1:-}" in
                         profiles|tools)
-                            warn "Removing profile configuration for: $PROJECT_DIR"
-                            if [[ -f "$profile_file" ]]; then
-                                rm -f "$profile_file"
-                                success "Removed profile configuration"
+                            warn "Clearing profile configuration for: $display_path"
+                            if [[ -f "$config_file" ]]; then
+                                # Clear profiles and packages sections
+                                {
+                                    awk '/^\[profiles\]/ { profiles=1; print; print ""; next }
+                                         /^\[packages\]/ { packages=1; print; print ""; next }
+                                         /^\[/ { profiles=0; packages=0 }
+                                         !profiles && !packages { print }' "$config_file"
+                                } > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
+                                success "Cleared profile configuration"
                             else
-                                info "No profile configuration found"
+                                info "No configuration file found"
                             fi
                             ;;
                         data)
-                            warn "Removing project data for: $PROJECT_DIR"
+                            warn "Removing project data for: $display_path"
                             if [[ -d "$project_claudebox_dir" ]]; then
                                 rm -rf "$project_claudebox_dir"
                                 success "Removed project data folder: $project_claudebox_dir"
@@ -1122,13 +1316,13 @@ main() {
                             fi
                             ;;
                         docker)
-                            warn "Removing Docker image for: $PROJECT_DIR"
+                            warn "Removing Docker image for: $display_path"
                             docker rmi -f "$image_name" 2>/dev/null && \
                                 success "Removed Docker image: $image_name" || \
                                 info "No Docker image found for this project"
                             ;;
                         all)
-                            warn "Removing all project artifacts for: $PROJECT_DIR"
+                            warn "Removing all project artifacts for: $display_path"
                             # Remove profile
                             if [[ -f "$profile_file" ]]; then
                                 rm -f "$profile_file"
@@ -1148,16 +1342,20 @@ main() {
                             # Show project cleanup submenu
                             cecho "ClaudeBox Project Clean Options:" "$CYAN"
                             echo
-                            echo -e "  ${GREEN}clean --project profiles${NC} Remove installed profiles & packages"
-                            echo -e "  ${GREEN}clean --project data${NC}     Remove project data (auth, history, configs)"
-                            echo -e "  ${GREEN}clean --project docker${NC}   Remove project Docker image"
-                            echo -e "  ${GREEN}clean --project all${NC}      Remove everything for this project"
+                            echo -e "  ${GREEN}clean --project [path] profiles${NC} Remove installed profiles & packages"
+                            echo -e "  ${GREEN}clean --project [path] data${NC}     Remove project data (auth, history, configs)"
+                            echo -e "  ${GREEN}clean --project [path] docker${NC}   Remove project Docker image"
+                            echo -e "  ${GREEN}clean --project [path] all${NC}      Remove everything for this project"
+                            echo
+                            cecho "Usage examples:" "$WHITE"
+                            echo "  claudebox clean --project data                    # Current directory"
+                            echo "  claudebox clean --project /path/to/project all    # Specific path"
                             echo
                             cecho "Current project: $PROJECT_DIR" "$YELLOW"
                             echo
                             cecho "What gets removed:" "$WHITE"
-                            echo "  profiles: ~/.claudebox/profiles/${project_folder_name}.ini"
-                            echo "  data:     ~/.claudebox/${project_folder_name}/ (auth, history, configs, firewall)"
+                            echo "  profiles: Clears [profiles] and [packages] sections in config.ini"
+                            echo "  data:     ~/.claudebox/projects/${project_folder_name}/ (entire project folder)"
                             echo "  docker:   Docker image claudebox-${project_folder_name}"
                             exit 0
                             ;;
@@ -1204,11 +1402,12 @@ main() {
                 echo
                 cecho "Added Commands:" "$WHITE"
                 echo -e "  profiles                        List all available profiles"
+                echo -e "  projects                        List all projects with paths"
                 echo -e "  profile                         Profile management menu"
                 echo -e "  install <packages>              Install apt packages"
                 echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
                 echo -e "  shell                           Open powerline shell in container"
-            echo -e "  allowlist                       Show/edit firewall allowlist"
+                echo -e "  allowlist                       Show/edit firewall allowlist"
                 echo -e "  info                            Show comprehensive project info"
                 echo -e "  clean                           Menu of cleanup tasks"
                 echo -e "  unlink                          Remove claudebox symlink"
@@ -1228,7 +1427,7 @@ main() {
             local project_folder_name
             project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
             IMAGE_NAME="claudebox-${project_folder_name}"
-            PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/$project_folder_name"
+            PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/projects/$project_folder_name"
             
             cecho "╔═══════════════════════════════════════════════════════════════════╗" "$CYAN"
             cecho "║                    ClaudeBox Information Panel                    ║" "$CYAN"
@@ -1363,7 +1562,7 @@ main() {
 
             # All Projects Summary
             cecho "📊 All Projects Summary" "$WHITE"
-            local total_projects=$(ls -1d "$HOME/.claudebox"/*/ 2>/dev/null | grep -v "/build/" | grep -v "/commands/" | grep -v "/profiles/" | wc -l)
+            local total_projects=$(ls -1d "$HOME/.claudebox/projects"/*/ 2>/dev/null | wc -l)
             echo "   Projects:   $total_projects total"
             
             # Show all ClaudeBox images with sizes
@@ -1399,32 +1598,24 @@ main() {
     setup_project_folder
     setup_claude_agent_command
 
-    # Profile tracking
-    mkdir -p "$HOME/.claudebox/profiles"
-
     # Check if we need to rebuild based on profiles
     local need_rebuild=false
     local current_profiles=()
     local profile_hash=""
 
-    # Read profiles for current project only
-    if [[ -d "$HOME/.claudebox/profiles" ]]; then
-        for profile_file in "$HOME/.claudebox/profiles"/*.ini; do
-            [[ -f "$profile_file" ]] || continue
-            local profiles_from_file=()
-            readarray -t profiles_from_file < <(read_profile_section "$profile_file" "profiles")
-            for profile in "${profiles_from_file[@]}"; do
-                profile=$(echo "$profile" | tr -d '[:space:]')
-                [[ -z "$profile" ]] && continue
-                # Add to array if not already present
-                local found=false
-                for p in "${current_profiles[@]}"; do
-                    [[ "$p" == "$profile" ]] && found=true && break
-                                done
-                [[ "$found" == "false" ]] && current_profiles+=("$profile")
-            done
+    # Read profiles from current project's config.ini
+    local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
+    if [[ -f "$config_file" ]]; then
+        readarray -t current_profiles < <(read_profile_section "$config_file" "profiles")
+        # Clean up profile names
+        local cleaned_profiles=()
+        for profile in "${current_profiles[@]}"; do
+            profile=$(echo "$profile" | tr -d '[:space:]')
+            [[ -z "$profile" ]] && continue
+            cleaned_profiles+=("$profile")
         done
-
+        current_profiles=("${cleaned_profiles[@]}")
+        
         if [[ ${#current_profiles[@]} -gt 0 ]]; then
             profile_hash=$(printf '%s\n' "${current_profiles[@]}" | sort | sha256sum | cut -d' ' -f1)
         fi
@@ -1477,7 +1668,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg]" \
     "https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && \
         apt-get install -y --no-autoremove --no-install-recommends apt-utils wget zsh fzf ca-certificates sudo git iptables ipset gh unzip jq \
-        procps vim nano less && \
+        procps vim nano less iputils-ping traceroute dnsutils netcat-openbsd net-tools && \
         rm -rf /var/lib/apt/lists/*
 
 # Set locale environment variables
@@ -1501,11 +1692,13 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -p fzf \
     -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
     -a "source /usr/share/doc/fzf/examples/completion.zsh" \
-    -a 'export HISTFILE="/home/$USERNAME/.zsh_history"' \
+    -a 'export HISTFILE="/home/$USERNAME/.cache/zsh_history"' \
     -a 'export HISTSIZE=10000' \
     -a 'export SAVEHIST=10000' \
     -a 'setopt HIST_IGNORE_DUPS' \
     -a 'setopt SHARE_HISTORY' \
+    -a 'setopt HIST_FCNTL_LOCK' \
+    -a 'setopt APPEND_HISTORY' \
     -a 'export NVM_DIR="$HOME/.nvm"' \
     -a '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' \
     -a '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' \
@@ -1698,26 +1891,42 @@ DOCKERFILE
        sudo chown -R "$USER:$USER" "$HOME/.claudebox" || true
    fi
 
-   # Create project-specific allowlist if it doesn't exist
-   local allowlist_file="$PROJECT_CLAUDEBOX_DIR/firewall/allowlist"
-
-   if [[ ! -f "$allowlist_file" ]]; then
-       mkdir -p "$(dirname "$allowlist_file")"
-       info "Creating default firewall allowlist for project..."
-       cat > "$allowlist_file" <<'EOF'
-# ClaudeBox Firewall Allowlist
-# Lines starting with # are comments
-# Add one domain or IP range per line
-#
+   # Create default firewall domains in config.ini if empty
+   local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
+   
+   if [[ -f "$config_file" ]]; then
+       # Check if firewall section is empty or missing domains
+       local firewall_empty=true
+       local in_firewall=0
+       while IFS= read -r line; do
+           if [[ "$line" == "[firewall]" ]]; then
+               in_firewall=1
+               continue
+           fi
+           if [[ "$line" =~ ^\[.*\]$ ]] && [ $in_firewall -eq 1 ]; then
+               break
+           fi
+           if [ $in_firewall -eq 1 ] && [[ -n "$line" ]] && [[ ! "$line" =~ ^#.* ]]; then
+               firewall_empty=false
+               break
+           fi
+       done < "$config_file"
+       
+       if [ "$firewall_empty" = "true" ]; then
+           info "Adding default firewall allowlist to project configuration..."
+           # Append default domains to firewall section
+           {
+               # First, copy everything except the firewall section
+               awk '/^\[firewall\]/ { firewall=1; print; next } 
+                    /^\[/ && firewall { firewall=0 } 
+                    !firewall { print }' "$config_file"
+               
+               # Add default domains
+               cat <<'EOF'
 # Default domains (always allowed):
-# - api.anthropic.com
-# - console.anthropic.com
-# - statsig.anthropic.com
-# - sentry.io
+# api.anthropic.com, console.anthropic.com, statsig.anthropic.com, sentry.io
 
-# ====================
 # GitHub.com
-# ====================
 github.com
 api.github.com
 raw.githubusercontent.com
@@ -1729,9 +1938,7 @@ pipelines.actions.githubusercontent.com
 ghcr.io
 pkg-containers.githubusercontent.com
 
-# ====================
 # GitLab.com
-# ====================
 gitlab.com
 api.gitlab.com
 registry.gitlab.com
@@ -1741,9 +1948,7 @@ gitlab.io
 *.s3.amazonaws.com
 *.amazonaws.com
 
-# ====================
 # Bitbucket.org
-# ====================
 bitbucket.org
 api.bitbucket.org
 altssh.bitbucket.org
@@ -1752,22 +1957,20 @@ bitbucket-pipelines-prod-us-west-2.s3.amazonaws.com
 bitbucket-pipelines-prod-us-east-1.s3.amazonaws.com
 bitbucket-pipelines-prod-eu-west-1.s3.amazonaws.com
 
-# ====================
 # Atlassian IP Ranges (Bitbucket Cloud)
-# ====================
 104.192.136.0/21
 185.166.140.0/22
 13.200.41.128/25
 18.246.31.128/25
 
-# ====================
 # Optional (Git LFS, Assets)
-# ====================
 github-cloud.s3.amazonaws.com
 github-releases.githubusercontent.com
 github-production-release-asset-2e65be.s3.amazonaws.com
 EOF
-       success "Created default allowlist"
+           } > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
+           success "Added default firewall allowlist"
+       fi
    fi
 
    set -- "${DEFAULT_FLAGS[@]}" "$@"
@@ -1779,6 +1982,17 @@ EOF
        ["--enable-sudo"]=2
        ["--disable-firewall"]=3
    )
+   
+   # Check if .claude/projects exists, if not remove -c flag
+   if [[ ! -d "$PROJECT_CLAUDEBOX_DIR/.claude/projects" ]]; then
+       local filtered_args=()
+       for arg in "$@"; do
+           if [[ "$arg" != "-c" && "$arg" != "--continue" ]]; then
+               filtered_args+=("$arg")
+           fi
+       done
+       set -- "${filtered_args[@]}"
+   fi
    
    # Extract and sort control flags
    local control_flags=()
@@ -1809,8 +2023,8 @@ EOF
        -v "$PROJECT_DIR":/workspace \
        -v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude \
        -v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json \
-       -v "$PROJECT_CLAUDEBOX_DIR/.zsh_history":/home/$DOCKER_USER/.zsh_history \
        -v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config \
+       -v "$PROJECT_CLAUDEBOX_DIR/.cache":/home/$DOCKER_USER/.cache \
        -v "$HOME/.ssh":/home/$DOCKER_USER/.ssh:ro \
        -e "NODE_ENV=${NODE_ENV:-production}" \
        -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
