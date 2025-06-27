@@ -1,5 +1,6 @@
 # Claude-specific files (project-specific, not to be committed)
 .claude/
+CLAUDE.md
 
 # Backup files
 *.backup
