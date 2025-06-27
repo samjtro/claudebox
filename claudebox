@@ -73,9 +73,6 @@ success() { cecho "$1" "$GREEN"; }
 
 # Parse early flags
 VERBOSE=false
-ENABLE_SUDO=false
-DISABLE_FIREWALL=false
-DOCKER_ARGS=()
 
 for arg in "$@"; do
     case "$arg" in
@@ -580,11 +577,13 @@ EOF
 set -euo pipefail
 ENABLE_SUDO=false
 DISABLE_FIREWALL=false
+SHELL_MODE=false
 new_args=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --enable-sudo) ENABLE_SUDO=true; shift ;;
         --disable-firewall) DISABLE_FIREWALL=true; shift ;;
+        --shell-mode) SHELL_MODE=true; shift ;;
         *) new_args+=("$1"); shift ;;
     esac
 done
@@ -634,8 +633,7 @@ fi
 
 cd /home/DOCKERUSER
 # Check if we're in shell mode
-if [[ "${1:-}" == "--shell-mode" ]]; then
-    shift  # Remove --shell-mode flag
+if [[ "${SHELL_MODE:-false}" == "true" ]]; then
     exec su DOCKERUSER -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
 else
     # Build command with properly quoted arguments
@@ -659,6 +657,7 @@ run_docker_build() {
         --build-arg USERNAME="$DOCKER_USER" \
         --build-arg NODE_VERSION="$NODE_VERSION" \
         --build-arg DELTA_VERSION="$DELTA_VERSION" \
+        --build-arg REBUILD_TIMESTAMP="${CLAUDEBOX_REBUILD_TIMESTAMP:-}" \
         -f "$1" -t "$IMAGE_NAME" "$2"
 }
 
@@ -705,9 +704,6 @@ main() {
                 found_help=true
             fi
             new_args+=("$arg")
-        elif [[ "$arg" == "--enable-sudo" || "$arg" == "--disable-firewall" ]]; then
-            # handled below
-            continue
         else
             new_args+=("$arg")
         fi
@@ -718,11 +714,13 @@ main() {
         local project_folder_name
         project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
         IMAGE_NAME="claudebox-${project_folder_name}"
-        warn "Rebuilding ClaudeBox Docker image..."
+        warn "Rebuilding ClaudeBox Docker image (no cache)..."
         if docker image inspect "$IMAGE_NAME" &>/dev/null; then
             docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
             docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
         fi
+        # Force no cache for rebuild command
+        export CLAUDEBOX_NO_CACHE=true
         set -- "${new_args[@]}"
     fi
 
@@ -976,7 +974,7 @@ main() {
 
         shell)
             shift
-            # Just add --shell-mode to the arguments and continue
+            # Just continue - the flag prioritizer will handle --shell-mode
             set -- "--shell-mode" "$@"
             ;;
 
@@ -1462,6 +1460,7 @@ main() {
         cat > "$dockerfile" <<'DOCKERFILE'
 FROM debian:bookworm
 ARG USER_ID GROUP_ID USERNAME NODE_VERSION DELTA_VERSION
+ARG REBUILD_TIMESTAMP
 
 RUN echo '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/policy-rc.d
 
@@ -1773,10 +1772,37 @@ EOF
 
    set -- "${DEFAULT_FLAGS[@]}" "$@"
 
-   # Build Docker arguments
-   local docker_args=()
-   [[ "$ENABLE_SUDO" == "true" ]] && docker_args+=("--enable-sudo")
-   [[ "$DISABLE_FIREWALL" == "true" ]] && docker_args+=("--disable-firewall")
+   # Flag Prioritizer System
+   # Define control flags and their priority (lower number = higher priority)
+   declare -A CONTROL_FLAGS=(
+       ["--shell-mode"]=1
+       ["--enable-sudo"]=2
+       ["--disable-firewall"]=3
+   )
+   
+   # Extract and sort control flags
+   local control_flags=()
+   local claude_flags=()
+   local temp_args=("$@")
+   
+   # Extract control flags and separate from Claude flags
+   for arg in "${temp_args[@]}"; do
+       if [[ -n "${CONTROL_FLAGS[$arg]:-}" ]]; then
+           control_flags+=("$arg")
+       else
+           claude_flags+=("$arg")
+       fi
+   done
+   
+   # Sort control flags by priority
+   if [[ ${#control_flags[@]} -gt 0 ]]; then
+       IFS=$'\n' control_flags=($(
+           for flag in "${control_flags[@]}"; do
+               echo "${CONTROL_FLAGS[$flag]}:$flag"
+           done | sort -n | cut -d: -f2
+       ))
+   fi
+   
 
    docker run -it --rm --init \
        -w /workspace \
@@ -1791,7 +1817,7 @@ EOF
        -e "CLAUDEBOX_PROJECT_NAME=$project_folder_name" \
        --cap-add NET_ADMIN \
        --cap-add NET_RAW \
-       "$IMAGE_NAME" "${docker_args[@]}" "$@"
+       "$IMAGE_NAME" "${control_flags[@]}" "${claude_flags[@]}"
 }
 
 main "$@"
