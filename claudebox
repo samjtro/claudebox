@@ -751,11 +751,13 @@ main() {
             echo -e "${CYAN}  --disable-firewall              ${WHITE}Disable network restrictions"
             echo
             cecho "Added Commands:" "$WHITE"
-            echo -e "  profile [names...]              Install language profiles"
+            echo -e "  profiles                        List all available profiles"
+            echo -e "  profile                         Profile management menu"
             echo -e "  install <packages>              Install apt packages"
             echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
-            echo -e "  shell                           Open bash shell in container"
-            echo -e "  info                            Show profiles, saved CLI flags, and container status"
+            echo -e "  shell                           Open powerline shell in container"
+            echo -e "  allowlist                       Show/edit firewall allowlist"
+            echo -e "  info                            Show comprehensive project info"
             echo -e "  clean                           Menu of cleanup tasks"
             echo -e "  unlink                          Remove claudebox symlink"
             echo -e "  rebuild                         Rebuild the Docker image from scratch${NC}"
@@ -771,19 +773,76 @@ main() {
     # Handle commands
     [[ "$VERBOSE" == "true" ]] && echo "Command: ${1:-none}" >&2
     case "${1:-}" in
+        profiles)
+            # Direct shortcut to show available profiles
+            shift
+            cecho "Available ClaudeBox Profiles:" "$CYAN"
+            echo
+            for profile in $(printf '%s\n' "${!PROFILE_DESCRIPTIONS[@]}" | sort); do
+                echo -e "  ${GREEN}$profile${NC} - ${PROFILE_DESCRIPTIONS[$profile]}"
+            done
+            exit 0
+            ;;
+            
         profile)
             shift
-            if [[ $# -eq 0 ]]; then
-                cecho "Available Profiles:" "$CYAN"
-                echo
-                for profile in $(printf '%s\n' "${!PROFILE_DESCRIPTIONS[@]}" | sort); do
-                    echo -e "  ${GREEN}$profile${NC} - ${PROFILE_DESCRIPTIONS[$profile]}"
-                done
-                echo
-                warn "Usage: claudebox profile <name> [<name2> ...]"
-                warn "Example: claudebox profile c python web"
-                exit 0
-            fi
+            # Compute project info
+            local project_folder_name
+            project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+            local profile_file
+            profile_file=$(get_profile_file_path)
+            
+            case "${1:-}" in
+                list|--list|-l)
+                    # Show available profiles
+                    cecho "Available ClaudeBox Profiles:" "$CYAN"
+                    echo
+                    for profile in $(printf '%s\n' "${!PROFILE_DESCRIPTIONS[@]}" | sort); do
+                        echo -e "  ${GREEN}$profile${NC} - ${PROFILE_DESCRIPTIONS[$profile]}"
+                    done
+                    exit 0
+                    ;;
+                    
+                status|--status|-s)
+                    # Show current project status
+                    cecho "Project: $PROJECT_DIR" "$CYAN"
+                    echo
+                    if [[ -f "$profile_file" ]]; then
+                        local current_profiles=()
+                        readarray -t current_profiles < <(read_profile_section "$profile_file" "profiles")
+                        if [[ ${#current_profiles[@]} -gt 0 ]]; then
+                            cecho "Active profiles: ${current_profiles[*]}" "$GREEN"
+                        else
+                            cecho "No profiles installed" "$YELLOW"
+                        fi
+                        
+                        local current_packages=()
+                        readarray -t current_packages < <(read_profile_section "$profile_file" "packages")
+                        if [[ ${#current_packages[@]} -gt 0 ]]; then
+                            echo "Extra packages: ${current_packages[*]}"
+                        fi
+                    else
+                        cecho "No profiles configured for this project" "$YELLOW"
+                    fi
+                    exit 0
+                    ;;
+                    
+                "")
+                    # Show profile menu
+                    cecho "ClaudeBox Profile Management:" "$CYAN"
+                    echo
+                    echo -e "  ${GREEN}profiles${NC}                 Show all available profiles"
+                    echo -e "  ${GREEN}profile status${NC}           Show current project's profiles"
+                    echo -e "  ${GREEN}profile <names...>${NC}       Install profiles (e.g., python c rust)"
+                    echo
+                    cecho "Examples:" "$YELLOW"
+                    echo "  claudebox profiles              # See all available profiles"
+                    echo "  claudebox profile status        # Check current project's profiles"
+                    echo "  claudebox profile python        # Install Python development profile"
+                    echo "  claudebox profile c openwrt     # Install C and OpenWRT profiles"
+                    exit 0
+                    ;;
+            esac
 
             local selected=() remaining=()
             while [[ $# -gt 0 ]]; do
@@ -921,6 +980,44 @@ main() {
             set -- "--shell-mode" "$@"
             ;;
 
+        allowlist)
+            shift
+            # Compute project info
+            local project_folder_name
+            project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+            PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/$project_folder_name"
+            local allowlist_file="$PROJECT_CLAUDEBOX_DIR/firewall/allowlist"
+            
+            cecho "🔒 ClaudeBox Firewall Allowlist" "$CYAN"
+            echo
+            cecho "Current Project: $PROJECT_DIR" "$WHITE"
+            echo
+            
+            if [[ -f "$allowlist_file" ]]; then
+                cecho "Project Allowlist:" "$GREEN"
+                echo "  $allowlist_file"
+                echo
+                cat "$allowlist_file"
+            else
+                cecho "Project Allowlist:" "$YELLOW"
+                echo "  Not yet created (will be created on first run)"
+                echo "  Location: $allowlist_file"
+            fi
+            
+            echo
+            cecho "Default Allowlist Template:" "$CYAN"
+            echo "  When created, includes GitHub, GitLab, Bitbucket, and Anthropic domains"
+            echo
+            cecho "To edit allowlist:" "$YELLOW"
+            echo "  \$EDITOR $allowlist_file"
+            echo
+            cecho "Note:" "$WHITE"
+            echo "  Changes take effect on next container start"
+            echo "  Use --disable-firewall flag to bypass all restrictions"
+            
+            exit 0
+            ;;
+
         clean)
             shift
             case "${1:-}" in
@@ -1008,7 +1105,7 @@ main() {
                     profile_file=$(get_profile_file_path)
                     
                     case "${1:-}" in
-                        tools)
+                        profiles|tools)
                             warn "Removing profile configuration for: $PROJECT_DIR"
                             if [[ -f "$profile_file" ]]; then
                                 rm -f "$profile_file"
@@ -1053,12 +1150,17 @@ main() {
                             # Show project cleanup submenu
                             cecho "ClaudeBox Project Clean Options:" "$CYAN"
                             echo
-                            echo -e "  ${GREEN}clean --project tools${NC}    Remove profile configuration (*.ini file)"
-                            echo -e "  ${GREEN}clean --project data${NC}     Remove all project data (home directory)"
-                            echo -e "  ${GREEN}clean --project docker${NC}   Remove project Docker image and layers"
+                            echo -e "  ${GREEN}clean --project profiles${NC} Remove installed profiles & packages"
+                            echo -e "  ${GREEN}clean --project data${NC}     Remove project data (auth, history, configs)"
+                            echo -e "  ${GREEN}clean --project docker${NC}   Remove project Docker image"
                             echo -e "  ${GREEN}clean --project all${NC}      Remove everything for this project"
                             echo
                             cecho "Current project: $PROJECT_DIR" "$YELLOW"
+                            echo
+                            cecho "What gets removed:" "$WHITE"
+                            echo "  profiles: ~/.claudebox/profiles/${project_folder_name}.ini"
+                            echo "  data:     ~/.claudebox/${project_folder_name}/ (auth, history, configs, firewall)"
+                            echo "  docker:   Docker image claudebox-${project_folder_name}"
                             exit 0
                             ;;
                     esac
@@ -1103,11 +1205,13 @@ main() {
                 echo -e "${CYAN}  --disable-firewall              ${WHITE}Disable network restrictions"
                 echo
                 cecho "Added Commands:" "$WHITE"
-                echo -e "  profile [names...]              Install language profiles"
+                echo -e "  profiles                        List all available profiles"
+                echo -e "  profile                         Profile management menu"
                 echo -e "  install <packages>              Install apt packages"
                 echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
-                echo -e "  shell                           Open bash shell in container"
-                echo -e "  info                            Show profiles, saved CLI flags, and container status"
+                echo -e "  shell                           Open powerline shell in container"
+            echo -e "  allowlist                       Show/edit firewall allowlist"
+                echo -e "  info                            Show comprehensive project info"
                 echo -e "  clean                           Menu of cleanup tasks"
                 echo -e "  unlink                          Remove claudebox symlink"
                 echo -e "  rebuild                         Rebuild the Docker image from scratch${NC}"
@@ -1122,102 +1226,172 @@ main() {
 
         info)
             shift
-            cecho "ClaudeBox Profile Status" "$CYAN"
+            # Compute project folder name early for paths
+            local project_folder_name
+            project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+            IMAGE_NAME="claudebox-${project_folder_name}"
+            PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/$project_folder_name"
+            
+            cecho "╔═══════════════════════════════════════════════════════════════════╗" "$CYAN"
+            cecho "║                    ClaudeBox Information Panel                    ║" "$CYAN"
+            cecho "╚═══════════════════════════════════════════════════════════════════╝" "$CYAN"
             echo
 
-            local profile_dir="$HOME/.claudebox/profiles"
-            if [[ ! -d "$profile_dir" ]] || [[ -z "$(ls -A "$profile_dir" 2>/dev/null)" ]]; then
-                warn "No profiles configured yet."
-                exit 0
-            fi
-
-            # Show all profiles
-            local count
-            count=$(ls -1 "$profile_dir"/*.ini 2>/dev/null | wc -l)
-            info "Tracking $count project profile(s)"
+            # Current Project Info
+            cecho "📁 Current Project" "$WHITE"
+            echo "   Path:       $PROJECT_DIR"
+            echo "   Project ID: $project_folder_name"
+            echo "   Data Dir:   $PROJECT_CLAUDEBOX_DIR"
             echo
 
-            # Show each project's profiles
-            for pfile in "$profile_dir"/*.ini; do
-                [[ -f "$pfile" ]] || continue
-                local proj_path
-                proj_path=$(basename "$pfile" .ini | sed 's|-|/|g')
-                cecho "/$proj_path:" "$YELLOW"
-
-                # Show profiles
-                local profiles=()
-                readarray -t profiles < <(read_profile_section "$pfile" "profiles")
-                if [[ ${#profiles[@]} -gt 0 ]]; then
-                    echo "  Profiles: ${profiles[*]}"
-                fi
-
-                # Show packages
-                local packages=()
-                readarray -t packages < <(read_profile_section "$pfile" "packages")
-                if [[ ${#packages[@]} -gt 0 ]]; then
-                    echo "  Packages: ${packages[*]}"
-                fi
-                echo
-            done
-
-            # Show current project's profiles
-            local current_profile_file
-            current_profile_file=$(get_profile_file_path)
-            if [[ -f "$current_profile_file" ]]; then
-                cecho "Current project ($PROJECT_DIR):" "$GREEN"
-                local current_profiles=()
-                readarray -t current_profiles < <(read_profile_section "$current_profile_file" "profiles")
-                if [[ ${#current_profiles[@]} -gt 0 ]]; then
-                    echo "  Profiles: ${current_profiles[*]}"
-                fi
-
-                local current_packages=()
-                readarray -t current_packages < <(read_profile_section "$current_profile_file" "packages")
-                if [[ ${#current_packages[@]} -gt 0 ]]; then
-                    echo "  Packages: ${current_packages[*]}"
-                fi
-            else
-                info "Current project has no profiles configured."
-            fi
-
-            # Show saved CLI flags
+            # ClaudeBox Installation
+            cecho "📦 ClaudeBox Installation" "$WHITE"
+            echo "   Script:  $SCRIPT_PATH"
+            echo "   Symlink: $LINK_TARGET"
             echo
+
+            # Saved CLI Flags
+            cecho "🚀 Saved CLI Flags" "$WHITE"
             if [[ -f "$HOME/.claudebox/default-flags" ]]; then
-                cecho "Saved Claude CLI flags:" "$CYAN"
                 local saved_flags=()
                 while IFS= read -r flag; do
                     [[ -n "$flag" ]] && saved_flags+=("$flag")
                 done < "$HOME/.claudebox/default-flags"
                 if [[ ${#saved_flags[@]} -gt 0 ]]; then
-                    echo "  ${saved_flags[*]}"
+                    echo -e "   Flags: ${GREEN}${saved_flags[*]}${NC}"
                 else
-                    echo "  (empty)"
+                    echo -e "   ${YELLOW}No flags saved${NC}"
                 fi
             else
-                info "No saved Claude CLI flags"
+                echo -e "   ${YELLOW}No saved flags${NC}"
             fi
-
-            # Show running containers
             echo
-            local running_containers
-            running_containers=$(docker ps --filter "ancestor=$IMAGE_NAME" --format "table {{.ID}}\t{{.Status}}\t{{.Command}}" | tail -n +2)
-            if [[ -n "$running_containers" ]]; then
-                cecho "Running ClaudeBox containers:" "$YELLOW"
-                echo "$running_containers"
+
+
+            # Claude Commands
+            cecho "📝 Claude Commands" "$WHITE"
+            local cmd_count=0
+            if [[ -d "$HOME/.claudebox/commands" ]]; then
+                cmd_count=$(ls -1 "$HOME/.claudebox/commands"/*.md 2>/dev/null | wc -l)
+            fi
+            local project_cmd_count=0
+            if [[ -d ".claude/commands" ]]; then
+                project_cmd_count=$(ls -1 .claude/commands/*.md 2>/dev/null | wc -l)
+            fi
+            
+            if [[ $cmd_count -gt 0 ]] || [[ $project_cmd_count -gt 0 ]]; then
+                echo "   Global:  $cmd_count command(s)"
+                if [[ $cmd_count -gt 0 ]] && [[ -d "$HOME/.claudebox/commands" ]]; then
+                    for cmd_file in "$HOME/.claudebox/commands"/*.md; do
+                        [[ -f "$cmd_file" ]] || continue
+                        echo "            - $(basename "$cmd_file" .md)"
+                    done
+                fi
+                echo "   Project: $project_cmd_count command(s)"
+                if [[ $project_cmd_count -gt 0 ]] && [[ -d ".claude/commands" ]]; then
+                    for cmd_file in .claude/commands/*.md; do
+                        [[ -f "$cmd_file" ]] || continue
+                        echo "            - $(basename "$cmd_file" .md)"
+                    done
+                fi
             else
-                info "No ClaudeBox containers currently running."
+                echo -e "   ${YELLOW}No custom commands found${NC}"
+                echo -e "   Location: ~/.claudebox/commands/ (global), .claude/commands/ (project)"
             fi
-
-            # Show all ClaudeBox images
             echo
-            local claudebox_images
-            claudebox_images=$(docker images --filter "reference=claudebox-*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | tail -n +1)
-            if [[ -n "$claudebox_images" ]]; then
-                cecho "ClaudeBox Docker Images:" "$YELLOW"
-                echo "$claudebox_images"
+
+            # Project Profiles
+            cecho "🛠️ Project Profiles& & Packages" "$WHITE"
+            local current_profile_file
+            current_profile_file=$(get_profile_file_path)
+            if [[ -f "$current_profile_file" ]]; then
+                local current_profiles=()
+                readarray -t current_profiles < <(read_profile_section "$current_profile_file" "profiles")
+                local current_packages=()
+                readarray -t current_packages < <(read_profile_section "$current_profile_file" "packages")
+                
+                if [[ ${#current_profiles[@]} -gt 0 ]]; then
+                    echo -e "   Installed:  ${GREEN}${current_profiles[*]}${NC}"
+                else
+                    echo -e "   Installed:  ${YELLOW}None${NC}"
+                fi
+                
+                if [[ ${#current_packages[@]} -gt 0 ]]; then
+                    echo "   Packages:   ${current_packages[*]}"
+                fi
+            else
+                echo -e "   Status:     ${YELLOW}No profiles installed${NC}"
             fi
+            
+            # Show available profiles
+            echo -e "   Available:  ${CYAN}core${NC}, python, c, rust, go, javascript, java, ruby, php"
+            echo -e "               database, devops, web, ml, security, embedded, networking"
+            echo -e "   ${CYAN}Hint:${NC} Run 'claudebox profile' for profile help "
+            echo
 
+            # Docker Status
+            cecho "🐳 Docker Status" "$WHITE"
+            # Check if image exists
+            if docker image inspect "$IMAGE_NAME" &>/dev/null; then
+                local image_info=$(docker images --filter "reference=$IMAGE_NAME" --format "{{.Size}}")
+                echo -e "   Image:      ${GREEN}Ready${NC} ($IMAGE_NAME - $image_info)"
+                
+                # Show image details
+                local image_created=$(docker inspect "$IMAGE_NAME" --format '{{.Created}}' | cut -d'T' -f1)
+                local layer_count=$(docker history "$IMAGE_NAME" --no-trunc --format "{{.CreatedBy}}" | wc -l)
+                echo "   Created:    $image_created"
+                echo "   Layers:     $layer_count"
+            else
+                echo -e "   Image:      ${YELLOW}Not built${NC}"
+            fi
+            
+            # Check for running containers
+            local running_containers=$(docker ps --filter "ancestor=$IMAGE_NAME" -q 2>/dev/null)
+            if [[ -n "$running_containers" ]]; then
+                local container_count=$(echo "$running_containers" | wc -l)
+                echo -e "   Containers: ${GREEN}$container_count running${NC}"
+                
+                # Show container stats if running
+                for container_id in $running_containers; do
+                    local container_stats=$(docker stats --no-stream --format "{{.Container}}: {{.CPUPerc}} CPU, {{.MemUsage}}" "$container_id" 2>/dev/null || echo "")
+                    if [[ -n "$container_stats" ]]; then
+                        echo "               - $container_stats"
+                    fi
+                done
+            else
+                echo "   Containers: None running"
+            fi
+            echo
 
+            # All Projects Summary
+            cecho "📊 All Projects Summary" "$WHITE"
+            local total_projects=$(ls -1d "$HOME/.claudebox"/*/ 2>/dev/null | grep -v "/build/" | grep -v "/commands/" | grep -v "/profiles/" | wc -l)
+            echo "   Projects:   $total_projects total"
+            
+            # Show all ClaudeBox images with sizes
+            local total_size=$(docker images --filter "reference=claudebox-*" --format "{{.Size}}" | awk '{
+                size=$1; unit=$2;
+                if (unit == "GB") size = size * 1024;
+                else if (unit == "KB") size = size / 1024;
+                total += size
+            } END {
+                if (total > 1024) printf "%.1fGB", total/1024;
+                else printf "%.1fMB", total
+            }')
+            local image_count=$(docker images --filter "reference=claudebox-*" -q | wc -l)
+            echo "   Images:     $image_count ClaudeBox images using $total_size"
+            
+            # Docker system stats
+            local docker_stats=$(docker system df --format "table {{.Type}}\t{{.Total}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}" 2>/dev/null | tail -n +2)
+            if [[ -n "$docker_stats" ]]; then
+                echo "   System:"
+                while IFS=$'\t' read -r type total active size reclaim; do
+                    echo "               - $type: $total total, $active active ($size, $reclaim reclaimable)"
+                done <<< "$docker_stats"
+            fi
+            echo
+
+            
             exit 0
             ;;
 
@@ -1492,11 +1666,12 @@ DOCKERFILE
         echo -e "  ${YELLOW}claudebox [options]${NC}        # Launch Claude CLI"
         echo
         cecho "Power Features:" "$GREEN"
-        echo -e "  ${YELLOW}claudebox profile${NC}                # See all language profiles"
+        echo -e "  ${YELLOW}claudebox profiles${NC}               # See all available profiles"
         echo -e "  ${YELLOW}claudebox profile c openwrt${NC}      # Install C + OpenWRT tools"
         echo -e "  ${YELLOW}claudebox profile python ml${NC}      # Install Python + ML stack"
         echo -e "  ${YELLOW}claudebox install <packages>${NC}     # Install additional apt packages"
-        echo -e "  ${YELLOW}claudebox shell${NC}                  # Open bash shell in container"
+        echo -e "  ${YELLOW}claudebox shell${NC}                  # Open powerline shell in container"
+        echo -e "  ${YELLOW}claudebox allowlist${NC}              # View firewall configuration"
         echo
         cecho "Security:" "$GREEN"
         echo -e "  Network firewall: ON by default (Anthropic recommended)"
