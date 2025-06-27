@@ -68,20 +68,26 @@ chmod +x claudebox
 The script will:
 - ✅ Check for Docker (install if needed)
 - ✅ Configure Docker for non-root usage
-- ✅ Build the ClaudeBox image with MCP servers
+- ✅ Provision a docker container per project
 - ✅ Create a global symlink for easy access
-- ✅ Set up MCP configuration in your workspace
+
 
 ## 📚 Usage
 
 ### Basic Usage
 
 ```bash
-# Launch Claude CLI with MCP servers enabled
+# Launch Claude Code CLI
 claudebox
 
 # Pass arguments to Claude
 claudebox --model opus -c
+
+# Save your arguments so you don't need to type them every time
+claudebox --model opus -c
+
+# View the Claudebox info screen
+claudebox info
 
 # Get help
 claudebox --help        # Shows Claude help with ClaudeBox additions
