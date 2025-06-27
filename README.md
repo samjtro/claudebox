@@ -24,13 +24,14 @@ The Ultimate Claude Code Docker Development Environment - Run Claude AI's coding
 
 ## 🚀 What's New in Latest Update
 
-- **Per-Project Docker Images**: Each project now maintains its own Docker image for complete isolation
-- **Intelligent Layer Caching**: Optimized Docker builds with profile-specific layer caching
-- **Task Engine**: Built-in compact task engine for reliable code generation (`/taskengine`)
-- **Automatic Profile Rebuilding**: Detects profile changes and rebuilds automatically
-- **Enhanced Firewall Templates**: Pre-configured allowlists for GitHub, GitLab, and Bitbucket
-- **Project-Specific Claude Config**: Each project can have its own `.claude.json` settings
-- **Profile Dependencies**: Smart dependency resolution (e.g., C profile includes build tools)
+- **Enhanced UI/UX**: Improved menu alignment and comprehensive info display
+- **New `profiles` Command**: Quick listing of all available profiles with descriptions
+- **Firewall Management**: New `allowlist` command to view/edit network allowlists
+- **Per-Project Isolation**: Separate Docker images, auth state, history, and configs
+- **Improved Clean Menu**: Clear descriptions showing exact paths that will be removed
+- **Profile Management Menu**: Interactive profile command with status and examples
+- **Persistent Project Data**: Auth state, shell history, and tool configs preserved
+- **Smart Profile Dependencies**: Automatic dependency resolution (e.g., C includes build-tools)
 
 ## ✨ Features
 
@@ -42,9 +43,10 @@ The Ultimate Claude Code Docker Development Environment - Run Claude AI's coding
 - **Package Management**: Easy installation of additional development tools
 - **Auto-Setup**: Handles Docker installation and configuration automatically
 - **Security Features**: Network isolation with project-specific firewall allowlists
-- **Developer Experience**: GitHub CLI, Delta, fzf, and zsh with oh-my-zsh
+- **Developer Experience**: GitHub CLI, Delta, fzf, and zsh with oh-my-zsh powerline
 - **Python Virtual Environments**: Automatic per-project venv creation with uv
 - **Cross-Platform**: Works on Ubuntu, Debian, Fedora, Arch, and more
+- **Shell Experience**: Powerline zsh with syntax highlighting and autosuggestions
 
 ## 📋 Prerequisites
 
@@ -116,8 +118,14 @@ Each project maintains its own:
 ClaudeBox includes 15+ pre-configured development environments:
 
 ```bash
-# List all available profiles
+# List all available profiles with descriptions
+claudebox profiles
+
+# Interactive profile management menu
 claudebox profile
+
+# Check current project's profiles
+claudebox profile status
 
 # Install specific profiles (project-specific)
 claudebox profile python ml        # Python + Machine Learning
@@ -127,22 +135,31 @@ claudebox profile rust go         # Rust + Go
 
 #### Available Profiles:
 
-- **c** - C/C++ Development (gcc, g++, gdb, valgrind, cmake, cmocka, lcov, ncurses)
-- **openwrt** - OpenWRT Development (cross-compilation, QEMU, build essentials)
-- **rust** - Rust Development (cargo, rustc, clippy, rust-analyzer)
-- **python** - Python Development (pip, venv, black, mypy, pylint, poetry, pipenv)
-- **go** - Go Development (latest Go toolchain)
-- **javascript** - Node.js/TypeScript (npm, yarn, pnpm, TypeScript, ESLint, Prettier)
+**Core Profiles:**
+- **core** - Core Development Utilities (compilers, VCS, shell tools)
+- **build-tools** - Build Tools (CMake, autotools, Ninja)
+- **shell** - Optional Shell Tools (fzf, SSH, man, rsync, file)
+- **networking** - Network Tools (IP stack, DNS, route tools)
+
+**Language Profiles:**
+- **c** - C/C++ Development (debuggers, analyzers, Boost, ncurses, cmocka)
+- **rust** - Rust Development (installed via rustup)
+- **python** - Python Development (managed via uv)
+- **go** - Go Development (installed from upstream archive)
+- **javascript** - JavaScript/TypeScript (Node installed via nvm)
 - **java** - Java Development (OpenJDK 17, Maven, Gradle, Ant)
-- **ruby** - Ruby Development (Ruby, gems, bundler)
-- **php** - PHP Development (PHP, Composer, common extensions)
-- **database** - Database Tools (PostgreSQL, MySQL, SQLite, Redis, MongoDB clients)
-- **devops** - DevOps Tools (Docker, Kubernetes, Terraform, Ansible, AWS CLI)
-- **web** - Web Development (nginx, curl, httpie, jq)
-- **embedded** - Embedded Development (ARM toolchain, OpenOCD, PlatformIO)
-- **datascience** - Data Science (NumPy, Pandas, Jupyter, R)
-- **security** - Security Tools (nmap, tcpdump, wireshark, penetration testing)
-- **ml** - Machine Learning (PyTorch, TensorFlow, scikit-learn, transformers)
+- **ruby** - Ruby Development (gems, native deps, XML/YAML)
+- **php** - PHP Development (PHP + extensions + Composer)
+
+**Specialized Profiles:**
+- **openwrt** - OpenWRT Development (cross toolchain, QEMU, distro tools)
+- **database** - Database Tools (clients for major databases)
+- **devops** - DevOps Tools (Docker, Kubernetes, Terraform, etc.)
+- **web** - Web Dev Tools (nginx, HTTP test clients)
+- **embedded** - Embedded Dev (ARM toolchain, serial debuggers)
+- **datascience** - Data Science (Python, Jupyter, R)
+- **security** - Security Tools (scanners, crackers, packet tools)
+- **ml** - Machine Learning (build layer only; Python via uv)
 
 ### Default Flags Management
 
@@ -161,37 +178,21 @@ claudebox  # Will run with sudo and firewall disabled
 
 ### Project Information
 
-View detailed information about your ClaudeBox setup:
+View comprehensive information about your ClaudeBox setup:
 
 ```bash
-# Show all project profiles and running containers
+# Show detailed project and system information
 claudebox info
-
-# Example output:
-# ClaudeBox Profile Status
-# 
-# Tracking 3 project profile(s)
-# 
-# /home/user/project1:
-#   Profiles: python ml
-#   Packages: htop vim
-# 
-# /home/user/project2:
-#   Profiles: rust
-# 
-# Current project (/home/user/project1):
-#   Profiles: python ml
-#   Packages: htop vim
-# 
-# Running ClaudeBox containers:
-# CONTAINER ID   STATUS         COMMAND
-# abc123def      Up 5 minutes   claude
-# 
-# ClaudeBox Docker Images:
-# REPOSITORY          TAG       SIZE
-# claudebox-project1  latest    2.1GB
-# claudebox-project2  latest    1.8GB
 ```
+
+The info command displays:
+- **Current Project**: Path, ID, and data directory
+- **ClaudeBox Installation**: Script location and symlink
+- **Saved CLI Flags**: Your default flags configuration
+- **Claude Commands**: Global and project-specific custom commands
+- **Project Profiles**: Installed profiles, packages, and available options
+- **Docker Status**: Image status, creation date, layers, running containers
+- **All Projects Summary**: Total projects, images, and Docker system usage
 
 ### Package Management
 
@@ -199,11 +200,14 @@ claudebox info
 # Install additional packages (project-specific)
 claudebox install htop vim tmux
 
-# Open a shell in the container
+# Open a powerline zsh shell in the container
 claudebox shell
 
 # Update Claude CLI
 claudebox update
+
+# View/edit firewall allowlist
+claudebox allowlist
 ```
 
 ### Task Engine
@@ -236,26 +240,22 @@ claudebox --dangerously-skip-permissions
 ### Maintenance
 
 ```bash
-# View all clean options
-claudebox clean --help
-
-# Remove containers only
+# Interactive clean menu
 claudebox clean
 
-# Remove current project's data and profile
-claudebox clean --project
+# Project-specific cleanup options
+claudebox clean --project          # Shows submenu with options:
+  # profiles - Remove profile configuration (*.ini file)
+  # data     - Remove project data (auth, history, configs, firewall)
+  # docker   - Remove project Docker image
+  # all      - Remove everything for this project
 
-# Remove containers and image
-claudebox clean --image
-
-# Remove Docker build cache
-claudebox clean --cache
-
-# Remove associated volumes
-claudebox clean --volumes
-
-# Complete cleanup
-claudebox clean --all
+# Global cleanup options
+claudebox clean --containers       # Remove ClaudeBox containers
+claudebox clean --image           # Remove containers and current project image
+claudebox clean --cache           # Remove Docker build cache
+claudebox clean --volumes         # Remove ClaudeBox volumes
+claudebox clean --all             # Complete Docker cleanup
 
 # Rebuild the image from scratch
 claudebox rebuild
@@ -264,10 +264,15 @@ claudebox rebuild
 ## 🔧 Configuration
 
 ClaudeBox stores data in:
-- `~/.claude/` - Claude configuration and data
+- `~/.claude/` - Global Claude configuration (mounted read-only)
 - `~/.claudebox/` - Global ClaudeBox data
-- `~/.claudebox/profiles/` - Per-project profile configurations
-- `~/.claudebox/<project-name>/` - Project-specific data (memory, context, firewall, .claude.json)
+- `~/.claudebox/profiles/` - Per-project profile configurations (*.ini files)
+- `~/.claudebox/<project-name>/` - Project-specific data:
+  - `.claude/` - Project auth state
+  - `.claude.json` - Project API configuration
+  - `.zsh_history` - Shell history
+  - `.config/` - Tool configurations
+  - `firewall/allowlist` - Network allowlist
 - Current directory mounted as `/workspace` in container
 
 ### Project-Specific Features
@@ -293,12 +298,13 @@ ClaudeBox creates a per-project Debian-based Docker image with:
 - Network firewall (project-specific allowlists)
 - Volume mounts for workspace and configuration
 - GitHub CLI (gh) for repository operations
- - Delta for enhanced git diffs (version 0.17.0)
+- Delta for enhanced git diffs (version 0.17.0)
 - uv for fast Python package management
 - Nala for improved apt package management
 - fzf for fuzzy finding
-- zsh with oh-my-zsh
+- zsh with oh-my-zsh and powerline theme
 - Profile-specific development tools with intelligent layer caching
+- Persistent project state (auth, history, configs)
 
 ## 🤝 Contributing
 
@@ -384,3 +390,13 @@ Made with ❤️ for developers who love clean, reproducible environments
 
 **Author/Maintainer:** RchGrav  
 **GitHub:** [@RchGrav](https://github.com/RchGrav)
+
+## 📝 Changelog
+
+### Latest Updates
+- **Enhanced UI**: Improved menu alignment and info display with emojis and consistent columns
+- **New Commands**: Added `profiles` for quick listing and `allowlist` for firewall management
+- **Project Isolation**: Complete separation of auth, history, and configs per project
+- **Profile Menu**: Interactive profile management with status checking
+- **Clean Menu**: Clearer descriptions showing exact paths for each cleanup option
+- **Volume Architecture**: Fixed mount isolation for proper project separation
