@@ -134,7 +134,7 @@ claudebox profile
 claudebox profile status
 
 # Install specific profiles (project-specific)
-claudebox profile python ml        # Python + Machine Learning
+claudebox profile python ml       # Python + Machine Learning
 claudebox profile c openwrt       # C/C++ + OpenWRT
 claudebox profile rust go         # Rust + Go
 ```
