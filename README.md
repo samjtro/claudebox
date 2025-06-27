@@ -399,7 +399,13 @@ Made with ❤️ for developers who love clean, reproducible environments
 
 ## 📝 Changelog
 
-### Latest Updates
+### v1.0.0-rc3
+- **Flag Prioritizer System**: Implemented robust flag sorting to ensure control flags are processed in correct order
+- **Fixed Shell Mode Bug**: Shell command now works properly with saved flags
+- **Code Simplification**: Removed legacy flag handling code
+- **Improved Entrypoint**: Cleaner flag processing with dedicated control flag handling
+
+### v1.0.0-rc2
 - **Enhanced UI**: Improved menu alignment and info display with emojis and consistent columns
 - **New Commands**: Added `profiles` for quick listing and `allowlist` for firewall management
 - **Project Isolation**: Complete separation of auth, history, and configs per project
