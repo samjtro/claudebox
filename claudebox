@@ -405,10 +405,14 @@ update_profile_section() {
 
 # Project-specific folder setup
 setup_project_folder() {
-    mkdir -p "$PROJECT_CLAUDEBOX_DIR/claude-config"
-    mkdir -p "$PROJECT_CLAUDEBOX_DIR/memory"
-    mkdir -p "$PROJECT_CLAUDEBOX_DIR/context"
+    # Firewall configuration
     mkdir -p "$PROJECT_CLAUDEBOX_DIR/firewall"
+    
+    # Create mount points for Docker volumes
+    mkdir -p "$PROJECT_CLAUDEBOX_DIR/.claude"
+    mkdir -p "$PROJECT_CLAUDEBOX_DIR/.config"
+    touch "$PROJECT_CLAUDEBOX_DIR/.claude.json"
+    touch "$PROJECT_CLAUDEBOX_DIR/.zsh_history"
 }
 
 
@@ -587,32 +591,20 @@ done
 set -- "${new_args[@]}"
 export DISABLE_FIREWALL
 
-# Set up project-specific symlinks
-if [ -d /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME ]; then
-    # Ensure memory directory is accessible
-    mkdir -p /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/memory
-    chown -R DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME
+# Set up shared commands
+if [ -d /home/DOCKERUSER/.claudebox/commands ]; then
+    # Ensure .claude/commands directory exists
+    mkdir -p /home/DOCKERUSER/.claude/commands
+    
+    # Copy shared commands (don't overwrite existing project-specific ones)
+    cp -n /home/DOCKERUSER/.claudebox/commands/* /home/DOCKERUSER/.claude/commands/ 2>/dev/null || true
+    
+    # Ensure proper ownership
+    chown -R DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claude
 fi
 
-# Handle project-specific .claude.json
-if [ -d /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME ]; then
-    # If this is the first run for this project and no project-specific .claude.json exists
-    if [ ! -f /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.claude.json ] && [ -f /home/DOCKERUSER/.claude.json.host ]; then
-        # Copy the host's .claude.json as a starting point
-        cp /home/DOCKERUSER/.claude.json.host /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.claude.json
-        chown DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.claude.json
-    fi
-
-    # If project-specific .claude.json exists, symlink it
-    if [ -f /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.claude.json ]; then
-        rm -f /home/DOCKERUSER/.claude.json
-        ln -s /home/DOCKERUSER/.claudebox/$CLAUDEBOX_PROJECT_NAME/.claude.json /home/DOCKERUSER/.claude.json
-        chown -h DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claude.json
-    fi
-fi
-
-if [ -f /home/DOCKERUSER/init-firewall.sh ]; then
-    /home/DOCKERUSER/init-firewall.sh || true
+if [ -f ~/init-firewall ]; then
+    ~/init-firewall || true
 fi
 if [ "$ENABLE_SUDO" = "true" ]; then
     echo "DOCKERUSER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/DOCKERUSER
@@ -647,7 +639,7 @@ if [[ "${1:-}" == "--shell-mode" ]]; then
     exec su DOCKERUSER -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
 else
     # Build command with properly quoted arguments
-    cmd="cd /workspace && /home/DOCKERUSER/claude-wrapper"
+    cmd="cd /workspace && ~/claude-wrapper"
     for arg in "$@"; do
         # Escape single quotes in the argument
         escaped_arg=$(echo "$arg" | sed "s/'/'\\\\''/g")
@@ -741,6 +733,9 @@ main() {
     project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
     IMAGE_NAME="claudebox-${project_folder_name}"
     PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/$project_folder_name"
+    
+    # Ensure project directory exists
+    mkdir -p "$PROJECT_CLAUDEBOX_DIR"
 
     # Handle help immediately
     if [[ "$found_help" == "true" ]]; then
@@ -760,8 +755,9 @@ main() {
             echo -e "  install <packages>              Install apt packages"
             echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
             echo -e "  shell                           Open bash shell in container"
-            echo -e "  info                            Show ClaudeBox container status"
-            echo -e "  clean                           Clean up ClaudeBox resources (use 'clean --help' for options)"
+            echo -e "  info                            Show profiles, saved CLI flags, and container status"
+            echo -e "  clean                           Menu of cleanup tasks"
+            echo -e "  unlink                          Remove claudebox symlink"
             echo -e "  rebuild                         Rebuild the Docker image from scratch${NC}"
         else
             cecho "ClaudeBox - Claude Code Docker Environment" "$CYAN"
@@ -865,6 +861,16 @@ main() {
             fi
             echo
             ;;
+        
+        unlink)
+            if [[ -L "$LINK_TARGET" ]]; then
+                rm -f "$LINK_TARGET"
+                success "Removed claudebox symlink from $(dirname "$LINK_TARGET")"
+            else
+                info "No claudebox symlink found at $LINK_TARGET"
+            fi
+            exit 0
+            ;;
 
 
         update|config|mcp|migrate-installer)
@@ -882,10 +888,8 @@ main() {
             local temp_container="claudebox-temp-${project_folder_name}-$$"
             docker run -d --name "$temp_container" \
                 -v "$PROJECT_DIR":/workspace \
-                -v "$CLAUDE_DATA_DIR":/home/$DOCKER_USER/.claude \
-                -v "$HOME/.claudebox":/home/$DOCKER_USER/.claudebox \
-                -v "$HOME/.config/claude":/home/$DOCKER_USER/.config/claude \
-                -v "$HOME/.claude.json":/home/$DOCKER_USER/.claude.json.host:ro \
+                -v "$HOME/.claudebox/$project_folder_name":/home/$DOCKER_USER \
+                -v "$HOME/.claudebox":/home/$DOCKER_USER/.claudebox:ro \
                 -e "CLAUDEBOX_PROJECT_NAME=$project_folder_name" \
                 "$IMAGE_NAME" --shell-mode >/dev/null
 
@@ -899,7 +903,7 @@ main() {
                 "
             else
                 docker exec -it -u "$DOCKER_USER" "$temp_container" \
-                    /home/$DOCKER_USER/claude-wrapper "${DEFAULT_FLAGS[@]}" "$cmd" "$@"
+                    ~/claude-wrapper "${DEFAULT_FLAGS[@]}" "$cmd" "$@"
             fi
 
             # Commit changes back to image
@@ -920,56 +924,29 @@ main() {
         clean)
             shift
             case "${1:-}" in
-                --help|-h)
-                    cecho "ClaudeBox Clean Options:" "$CYAN"
-                    echo
-                    echo -e "  ${GREEN}clean${NC}                    Remove all containers (preserves image)"
-                    echo -e "  ${GREEN}clean --project${NC}          Remove current project's data and profile"
-                    echo -e "  ${GREEN}clean --all${NC}              Remove everything: containers, image, cache, symlink"
-                    echo -e "  ${GREEN}clean --image${NC}            Remove containers and image (preserves build cache)"
-                    echo -e "  ${GREEN}clean --cache${NC}            Remove Docker build cache only"
-                    echo -e "  ${GREEN}clean --volumes${NC}          Remove associated Docker volumes"
-                    echo -e "  ${GREEN}clean --symlink${NC}          Remove claudebox symlink only"
-                    echo -e "  ${GREEN}clean --dangling${NC}         Remove dangling images and unused containers"
-                    echo -e "  ${GREEN}clean --logs${NC}             Clear Docker container logs"
-                    echo -e "  ${GREEN}clean --help${NC}             Show this help message"
-                    echo
-                    cecho "Examples:" "$YELLOW"
-                    echo "  claudebox clean              # Remove all containers"
-                    echo "  claudebox clean --project    # Remove only this project's container"
-                    echo "  claudebox clean --image      # Remove containers and image"
-                    echo "  claudebox clean --all        # Complete cleanup and reset"
-                    exit 0
-                    ;;
                 --all|-a)
-                    warn "Complete ClaudeBox cleanup: removing containers, image, cache, and symlink..."
-                    # Remove all profile files
-                    rm -rf "$HOME/.claudebox/profiles"
-                    # Remove any containers from this image
+                    warn "Complete Docker cleanup: removing all claudebox containers, images, volumes, and cache..."
+                    # Remove all claudebox containers
                     docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
-                    # Remove orphaned containers from images that no longer exist
-                    # This is safer as it only removes containers whose images are gone
-                    docker ps -a --filter "status=exited" --format "{{.ID}} {{.Image}}" | while read id image; do
-                        if ! docker image inspect "$image" >/dev/null 2>&1; then
-                            docker rm -f "$id" 2>/dev/null || true
-                        fi
-                    done
-                   # Remove all claudebox project images
-                   docker images --filter "reference=claudebox-*" -q | xargs -r docker rmi -f 2>/dev/null || true
-                    # Remove image
-                    docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
+                    docker ps -a --format "{{.Names}}" | grep "^claudebox-" | xargs -r docker rm -f 2>/dev/null || true
+                    
+                    # Remove ALL claudebox images (including base)
+                    docker images --filter "reference=claudebox-*" -q | xargs -r docker rmi -f 2>/dev/null || true
+                    docker images --filter "reference=claudebox" -q | xargs -r docker rmi -f 2>/dev/null || true
+                    
+                    # Remove dangling images
+                    docker images -f "dangling=true" -q | xargs -r docker rmi -f 2>/dev/null || true
+                    
                     # Prune build cache
                     docker builder prune -af 2>/dev/null || true
+                    
                     # Remove volumes
                     docker volume ls -q --filter "name=claudebox" | xargs -r docker volume rm 2>/dev/null || true
-                    # Remove symlink
-                    [[ -L "$LINK_TARGET" ]] && rm -f "$LINK_TARGET" && info "Removed claudebox symlink"
-                    success "Complete cleanup finished!"
+                    
+                    success "Docker cleanup complete!"
                     ;;
                 --image|-i)
                     warn "Removing ClaudeBox containers and image..."
-                    # Remove all profile files
-                    rm -rf "$HOME/.claudebox/profiles"
                     # Remove any containers from this image
                     docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
                     # Remove orphaned containers from images that no longer exist
@@ -995,14 +972,18 @@ main() {
                     docker volume prune -f 2>/dev/null || true
                     success "Volumes cleaned!"
                     ;;
-                --symlink|-s)
-                    if [[ -L "$LINK_TARGET" ]]; then
-                        rm -f "$LINK_TARGET"
-                        success "Removed claudebox symlink from $(dirname "$LINK_TARGET")"
-                    else
-                        info "No claudebox symlink found at $LINK_TARGET"
-                    fi
-                    exit 0
+                --containers|-c)
+                    warn "Cleaning ClaudeBox containers..."
+                    # Remove any containers from this image
+                    docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
+                    # Remove orphaned containers from images that no longer exist
+                    # This is safer as it only removes containers whose images are gone
+                    docker ps -a --filter "status=exited" --format "{{.ID}} {{.Image}}" | while read id image; do
+                        if ! docker image inspect "$image" >/dev/null 2>&1; then
+                            docker rm -f "$id" 2>/dev/null || true
+                        fi
+                    done
+                    success "Containers cleaned!"
                     ;;
                 --dangling|-d)
                     warn "Removing dangling images and unused containers..."
@@ -1018,51 +999,90 @@ main() {
                     success "Container logs cleared!"
                     ;;
                 --project|-p)
-                    warn "Removing data for current project: $PROJECT_DIR"
+                    shift
+                    local project_folder_name
+                    project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+                    local project_claudebox_dir="$HOME/.claudebox/$project_folder_name"
+                    local image_name="claudebox-${project_folder_name}"
                     local profile_file
                     profile_file=$(get_profile_file_path)
-
-                    # Remove profile
-                    if [[ -f "$profile_file" ]]; then
-                        rm -f "$profile_file"
-                        success "Removed profile for $PROJECT_DIR"
-                    fi
-
-                    # Remove project-specific folder
-                    local project_folder_name
-        project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-        IMAGE_NAME="claudebox-${project_folder_name}"
-                    local project_claudebox_dir="$HOME/.claudebox/$project_folder_name"
-    local image_name="claudebox-${project_folder_name}"
-
-                    if [[ -d "$project_claudebox_dir" ]]; then
-                        rm -rf "$project_claudebox_dir"
-                        success "Removed project data folder: $project_claudebox_dir"
-
-    # Remove project Docker image
-    docker rmi -f "$image_name" 2>/dev/null || true
-    success "Removed project Docker image: $image_name"
-                    else
-                        info "No project data folder found"
-                    fi
+                    
+                    case "${1:-}" in
+                        tools)
+                            warn "Removing profile configuration for: $PROJECT_DIR"
+                            if [[ -f "$profile_file" ]]; then
+                                rm -f "$profile_file"
+                                success "Removed profile configuration"
+                            else
+                                info "No profile configuration found"
+                            fi
+                            ;;
+                        data)
+                            warn "Removing project data for: $PROJECT_DIR"
+                            if [[ -d "$project_claudebox_dir" ]]; then
+                                rm -rf "$project_claudebox_dir"
+                                success "Removed project data folder: $project_claudebox_dir"
+                            else
+                                info "No project data folder found"
+                            fi
+                            ;;
+                        docker)
+                            warn "Removing Docker image for: $PROJECT_DIR"
+                            docker rmi -f "$image_name" 2>/dev/null && \
+                                success "Removed Docker image: $image_name" || \
+                                info "No Docker image found for this project"
+                            ;;
+                        all)
+                            warn "Removing all project artifacts for: $PROJECT_DIR"
+                            # Remove profile
+                            if [[ -f "$profile_file" ]]; then
+                                rm -f "$profile_file"
+                                success "Removed profile configuration"
+                            fi
+                            # Remove data
+                            if [[ -d "$project_claudebox_dir" ]]; then
+                                rm -rf "$project_claudebox_dir"
+                                success "Removed project data folder"
+                            fi
+                            # Remove Docker image
+                            docker rmi -f "$image_name" 2>/dev/null && \
+                                success "Removed Docker image" || \
+                                info "No Docker image found"
+                            ;;
+                        *)
+                            # Show project cleanup submenu
+                            cecho "ClaudeBox Project Clean Options:" "$CYAN"
+                            echo
+                            echo -e "  ${GREEN}clean --project tools${NC}    Remove profile configuration (*.ini file)"
+                            echo -e "  ${GREEN}clean --project data${NC}     Remove all project data (home directory)"
+                            echo -e "  ${GREEN}clean --project docker${NC}   Remove project Docker image and layers"
+                            echo -e "  ${GREEN}clean --project all${NC}      Remove everything for this project"
+                            echo
+                            cecho "Current project: $PROJECT_DIR" "$YELLOW"
+                            exit 0
+                            ;;
+                    esac
                     exit 0
                     ;;
                 *)
-                    warn "Cleaning ClaudeBox containers..."
-                    # Remove all profile files
-                    rm -rf "$HOME/.claudebox/profiles"
-                    # Remove any containers from this image
-                    docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
-                    # Remove orphaned containers from images that no longer exist
-                    # This is safer as it only removes containers whose images are gone
-                    docker ps -a --filter "status=exited" --format "{{.ID}} {{.Image}}" | while read id image; do
-                        if ! docker image inspect "$image" >/dev/null 2>&1; then
-                            docker rm -f "$id" 2>/dev/null || true
-                        fi
-                    done
-                   # Remove all claudebox project images
-                   docker images --filter "reference=claudebox-*" -q | xargs -r docker rmi -f 2>/dev/null || true
-                    success "Containers removed! Image preserved for quick recreation."
+                    # Show menu by default
+                    cecho "ClaudeBox Clean Options:" "$CYAN"
+                    echo
+                    echo -e "  ${GREEN}clean --containers${NC}       Remove all containers (preserves image)"
+                    echo -e "  ${GREEN}clean --project${NC}          Show project cleanup options"
+                    echo -e "  ${GREEN}clean --all${NC}              Remove all Docker artifacts (containers, images, cache, volumes)"
+                    echo -e "  ${GREEN}clean --image${NC}            Remove containers and image (preserves build cache)"
+                    echo -e "  ${GREEN}clean --cache${NC}            Remove Docker build cache only"
+                    echo -e "  ${GREEN}clean --volumes${NC}          Remove associated Docker volumes"
+                    echo -e "  ${GREEN}clean --dangling${NC}         Remove dangling images and unused containers"
+                    echo -e "  ${GREEN}clean --logs${NC}             Clear Docker container logs"
+                    echo
+                    cecho "Examples:" "$YELLOW"
+                    echo "  claudebox clean --containers # Remove all containers"
+                    echo "  claudebox clean --project    # Show project cleanup menu"
+                    echo "  claudebox clean --image      # Remove containers and image"
+                    echo "  claudebox clean --all        # Complete Docker cleanup"
+                    exit 0
                     ;;
             esac
             echo
@@ -1087,8 +1107,9 @@ main() {
                 echo -e "  install <packages>              Install apt packages"
                 echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
                 echo -e "  shell                           Open bash shell in container"
-                echo -e "  info                            Show ClaudeBox container status"
-                echo -e "  clean                           Clean up ClaudeBox resources (use 'clean --help' for options)"
+                echo -e "  info                            Show profiles, saved CLI flags, and container status"
+                echo -e "  clean                           Menu of cleanup tasks"
+                echo -e "  unlink                          Remove claudebox symlink"
                 echo -e "  rebuild                         Rebuild the Docker image from scratch${NC}"
             else
                 cecho "ClaudeBox - Claude Code Docker Environment" "$CYAN"
@@ -1157,6 +1178,23 @@ main() {
                 fi
             else
                 info "Current project has no profiles configured."
+            fi
+
+            # Show saved CLI flags
+            echo
+            if [[ -f "$HOME/.claudebox/default-flags" ]]; then
+                cecho "Saved Claude CLI flags:" "$CYAN"
+                local saved_flags=()
+                while IFS= read -r flag; do
+                    [[ -n "$flag" ]] && saved_flags+=("$flag")
+                done < "$HOME/.claudebox/default-flags"
+                if [[ ${#saved_flags[@]} -gt 0 ]]; then
+                    echo "  ${saved_flags[*]}"
+                else
+                    echo "  (empty)"
+                fi
+            else
+                info "No saved Claude CLI flags"
             fi
 
             # Show running containers
@@ -1290,7 +1328,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -p fzf \
     -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
     -a "source /usr/share/doc/fzf/examples/completion.zsh" \
-    -a 'export HISTFILE="/home/$USERNAME/.claudebox/.zsh_history"' \
+    -a 'export HISTFILE="/home/$USERNAME/.zsh_history"' \
     -a 'export HISTSIZE=10000' \
     -a 'export SAVEHIST=10000' \
     -a 'setopt HIST_IGNORE_DUPS' \
@@ -1424,14 +1462,13 @@ DOCKERFILE
         echo "" >> "$dockerfile"
         cat >> "$dockerfile" <<'DOCKERFILE'
 
+# Copy internal scripts to home directory
+COPY --chmod=755 claude-wrapper /home/$USERNAME/claude-wrapper
+COPY --chmod=755 init-firewall /home/$USERNAME/init-firewall
+RUN chown $USERNAME:$USERNAME /home/$USERNAME/claude-wrapper /home/$USERNAME/init-firewall
+
 USER $USERNAME
 RUN bash -c "source $NVM_DIR/nvm.sh && claude --version"
-
-# Copy Claude wrapper script
-COPY --chown=$USERNAME --chmod=755 claude-wrapper /home/$USERNAME/claude-wrapper
-
-# Copy firewall script
-COPY --chown=$USERNAME --chmod=755 init-firewall /home/$USERNAME/init-firewall
 
 WORKDIR /workspace
 USER root
@@ -1466,7 +1503,8 @@ DOCKERFILE
         echo -e "  Sudo access: OFF by default"
         echo
         cecho "Maintenance:" "$GREEN"
-        echo -e "  ${YELLOW}claudebox clean --help${NC}            # See all cleanup options"
+        echo -e "  ${YELLOW}claudebox clean ${NC}                 # See all cleanup options"
+        echo -e "  ${YELLOW}claudebox unlink ${NC}                # Remove symbolic link"
         echo
         cecho "Just install the profile you need and start coding!" "$PURPLE"
        exit 0
@@ -1568,11 +1606,10 @@ EOF
    docker run -it --rm --init \
        -w /workspace \
        -v "$PROJECT_DIR":/workspace \
-       -v "$CLAUDE_DATA_DIR":/home/$DOCKER_USER/.claude \
-       -v "$HOME/.claudebox":/home/$DOCKER_USER/.claudebox \
-       -v "$HOME/.config/claude":/home/$DOCKER_USER/.config/claude \
-       -v "$HOME/.claude.json":/home/$DOCKER_USER/.claude.json.host:ro \
-       -v "$HOME/.npmrc":/home/$DOCKER_USER/.npmrc:ro \
+       -v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude \
+       -v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json \
+       -v "$PROJECT_CLAUDEBOX_DIR/.zsh_history":/home/$DOCKER_USER/.zsh_history \
+       -v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config \
        -v "$HOME/.ssh":/home/$DOCKER_USER/.ssh:ro \
        -e "NODE_ENV=${NODE_ENV:-production}" \
        -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
