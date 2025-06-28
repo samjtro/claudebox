@@ -399,6 +399,13 @@ Made with ❤️ for developers who love clean, reproducible environments
 
 ## 📝 Changelog
 
+### v1.0.0-rc5
+- **ShellCheck Improvements**: Applied numerous code quality fixes for better reliability
+- **Fixed Unbound Variables**: Resolved `XAUTHORITY`, `profile_file`, and other variable reference errors
+- **Clean Command Fixes**: Removed conflicting `-c` shortcuts and fixed `clean --project all` functionality
+- **Terminal Resize Support**: Added proper SIGWINCH handlers for both bash and zsh in containers
+- **Build System**: Improved error handling and package installation in Dockerfile
+
 ### v1.0.0-rc4
 - **Directory Restructuring**: Projects now organized under `~/.claudebox/projects/` for cleaner separation
 - **Consolidated Configuration**: Single `config.ini` per project replaces multiple config files

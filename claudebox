@@ -37,6 +37,7 @@ if [[ "$HOST_OS" == "macOS" ]] && ! is_case_sensitive_fs; then
   export DOCKER_BUILDKIT=1
 fi
 
+
 # Cross-platform script path resolution
 get_script_path() {
     local source="${BASH_SOURCE[0]:-$0}"
@@ -49,7 +50,6 @@ get_script_path() {
 }
 readonly SCRIPT_PATH="$(get_script_path)"
 
-readonly CLAUDE_DATA_DIR="$HOME/.claude"
 readonly LINK_TARGET="$HOME/.local/bin/claudebox"
 readonly NODE_VERSION="--lts"
 readonly DELTA_VERSION="0.17.0"
@@ -74,7 +74,7 @@ success() { cecho "$1" "$GREEN"; }
 # Parse early flags
 VERBOSE=false
 
-for arg in "$@"; do
+for arg in "$@"; do   # SC2068 is fine – we want word–splitting on purpose here
     case "$arg" in
         --verbose) VERBOSE=true ; shift ;;
     esac
@@ -234,7 +234,7 @@ show_spinner() {
 declare -A PROFILES PROFILE_DESCRIPTIONS
 
 # Shared base
-PROFILES[core]="gcc g++ make git pkg-config libssl-dev libffi-dev zlib1g-dev"
+PROFILES[core]="gcc g++ make git pkg-config libssl-dev libffi-dev zlib1g-dev tmux"
 PROFILE_DESCRIPTIONS[core]="Core Development Utilities (compilers, VCS, shell tools)"
 
 # Optional build helpers
@@ -363,6 +363,7 @@ get_project_by_path() {
     local abs_path=$(realpath "$search_path" 2>/dev/null || echo "$search_path")
     
     # Check all project directories for matching path in config.ini
+    # shellcheck disable=SC2231 # We want pathname expansion even when no dirs
     for project_dir in "$HOME/.claudebox/projects"/*/ ; do
         [[ -d "$project_dir" ]] || continue
         
@@ -383,6 +384,7 @@ get_project_by_path() {
 list_all_projects() {
     local projects_found=0
     
+    # shellcheck disable=SC2231 # We want pathname expansion even when no dirs
     for project_dir in "$HOME/.claudebox/projects"/*/ ; do
         [[ -d "$project_dir" ]] || continue
         
@@ -814,7 +816,6 @@ main() {
     local new_args=()
     local found_rebuild=false
     local found_help=false
-    local VERBOSE=false
 
     for arg in "${args[@]}"; do
         if [[ "$arg" == "rebuild" ]]; then
@@ -1220,7 +1221,7 @@ main() {
                     docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
                     success "Containers and image removed! Build cache preserved."
                     ;;
-                --cache|-c)
+                --cache)
                     warn "Cleaning Docker build cache..."
                     docker builder prune -af
                     success "Build cache cleaned!"
@@ -1231,7 +1232,7 @@ main() {
                     docker volume prune -f 2>/dev/null || true
                     success "Volumes cleaned!"
                     ;;
-                --containers|-c)
+                --containers)
                     warn "Cleaning ClaudeBox containers..."
                     # Remove any containers from this image
                     docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
@@ -1324,8 +1325,8 @@ main() {
                         all)
                             warn "Removing all project artifacts for: $display_path"
                             # Remove profile
-                            if [[ -f "$profile_file" ]]; then
-                                rm -f "$profile_file"
+                            if [[ -f "$config_file" ]]; then
+                                rm -f "$config_file"
                                 success "Removed profile configuration"
                             fi
                             # Remove data
@@ -1550,7 +1551,7 @@ main() {
                 
                 # Show container stats if running
                 for container_id in $running_containers; do
-                    local container_stats=$(docker stats --no-stream --format "{{.Container}}: {{.CPUPerc}} CPU, {{.MemUsage}}" "$container_id" 2>/dev/null || echo "")
+                    local container_stats="$(docker stats --no-stream --format "{{.Container}}: {{.CPUPerc}} CPU, {{.MemUsage}}" "$container_id" 2>/dev/null || echo "")"
                     if [[ -n "$container_stats" ]]; then
                         echo "               - $container_stats"
                     fi
@@ -1668,7 +1669,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg]" \
     "https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && \
         apt-get install -y --no-autoremove --no-install-recommends apt-utils wget zsh fzf ca-certificates sudo git iptables ipset gh unzip jq \
-        procps vim nano less iputils-ping traceroute dnsutils netcat-openbsd net-tools && \
+        procps vim nano less iputils-ping traceroute dnsutils netcat-openbsd net-tools xdg-utils && \
         rm -rf /var/lib/apt/lists/*
 
 # Set locale environment variables
@@ -1742,9 +1743,64 @@ RUN bash -c "source $NVM_DIR/nvm.sh && \
     nvm use default && \
     npm install -g @anthropic-ai/claude-code"
 
+# Add terminal resize handler to zsh
+RUN cat >> ~/.zshrc <<'EOF'
+
+# Terminal resize handler
+if [[ -n "$PS1" ]] && command -v stty >/dev/null; then
+  function _update_size {
+    local rows cols
+    { stty size } 2>/dev/null | read rows cols
+    ((rows)) && export LINES=$rows COLUMNS=$cols
+  }
+  TRAPWINCH() { _update_size }
+  _update_size
+fi
+EOF
+
+# Enable checkwinsize for bash
+RUN echo "shopt -s checkwinsize" >> ~/.bashrc
+
+# Configure tmux for proper resize handling
+RUN cat > ~/.tmux.conf <<'EOF'
+# Enable aggressive resize for proper window size handling
+set -g aggressive-resize on
+
+# Better terminal support
+set -g default-terminal "screen-256color"
+set -ga terminal-overrides ",xterm-256color:Tc"
+
+# Other useful tmux settings while we're at it
+set -g mouse on
+set -g history-limit 10000
+EOF
+
+# Configure screen for proper resize handling
+RUN cat > ~/.screenrc <<'EOF'
+# Enable dynamic window resizing
+defwritelock on
+altscreen on
+
+# Better defaults
+defscrollback 10000
+term screen-256color
+EOF
 
 # Install profile packages as separate layers for better caching
 USER root
+
+# Create system-wide winsize handler for bash/sh
+RUN cat > /etc/profile.d/00-winsize.sh <<'EOF'
+if [ -n "$PS1" ] && command -v stty >/dev/null 2>&1; then
+  _update_size() {
+    local sz
+    sz=$(stty size 2>/dev/null) || return
+    export LINES=${sz%% *}  COLUMNS=${sz##* }
+  }
+  trap _update_size WINCH
+  _update_size
+fi
+EOF
 DOCKERFILE
         if [[ ${#current_profiles[@]} -gt 0 ]]; then
                 info "Building with profiles: ${current_profiles[*]}"
@@ -1759,7 +1815,8 @@ DOCKERFILE
 
                 # APT install layers (1 per profile)
                 for profile in "${unique_profiles[@]}"; do
-                        pkg_list=(${PROFILES[$profile]:-})
+                        # Convert space-separated package string to array
+                        IFS=' ' read -ra pkg_list <<< "${PROFILES[$profile]:-}"
                         [[ ${#pkg_list[@]} -eq 0 ]] && continue
 
         cat >> "$dockerfile" <<DOCKERFILE
@@ -1878,7 +1935,6 @@ DOCKERFILE
    fi
 
    # Run container
-   local extra_mounts=()
 
    # Ensure .claudebox exists with proper permissions
    if [[ ! -d "$HOME/.claudebox" ]]; then
@@ -2025,10 +2081,11 @@ EOF
        -v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json \
        -v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config \
        -v "$PROJECT_CLAUDEBOX_DIR/.cache":/home/$DOCKER_USER/.cache \
-       -v "$HOME/.ssh":/home/$DOCKER_USER/.ssh:ro \
+       -v "$HOME/.ssh":"/home/$DOCKER_USER/.ssh:ro" \
        -e "NODE_ENV=${NODE_ENV:-production}" \
        -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
        -e "CLAUDEBOX_PROJECT_NAME=$project_folder_name" \
+       -e "TERM=${TERM:-xterm-256color}" \
        --cap-add NET_ADMIN \
        --cap-add NET_RAW \
        "$IMAGE_NAME" "${control_flags[@]}" "${claude_flags[@]}"
