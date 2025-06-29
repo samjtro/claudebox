@@ -232,71 +232,79 @@ show_spinner() {
     echo -e "\b${GREEN}✓${NC}"
 }
 
-declare -A PROFILES PROFILE_DESCRIPTIONS
+#--- Begin Profile Arrays
 
-# Shared base
-PROFILES[core]="gcc g++ make git pkg-config libssl-dev libffi-dev zlib1g-dev tmux"
-PROFILE_DESCRIPTIONS[core]="Core Development Utilities (compilers, VCS, shell tools)"
+# Bash 3.2 compatible profile functions (no associative arrays)
 
-# Optional build helpers
-PROFILES[build-tools]="cmake ninja-build autoconf automake libtool"
-PROFILE_DESCRIPTIONS[build-tools]="Build Tools (CMake, autotools, Ninja)"
+# Get profile packages
+get_profile_packages() {
+    case "$1" in
+        core) echo "gcc g++ make git pkg-config libssl-dev libffi-dev zlib1g-dev tmux" ;;
+        build-tools) echo "cmake ninja-build autoconf automake libtool" ;;
+        shell) echo "rsync openssh-client man-db gnupg2 aggregate file" ;;
+        networking) echo "iptables ipset iproute2 dnsutils" ;;
+        c) echo "gdb valgrind clang clang-format clang-tidy cppcheck doxygen libboost-all-dev libcmocka-dev libcmocka0 lcov libncurses5-dev libncursesw5-dev" ;;
+        openwrt) echo "rsync libncurses5-dev zlib1g-dev gawk gettext xsltproc libelf-dev ccache subversion swig time qemu-system-arm qemu-system-aarch64 qemu-system-mips qemu-system-x86 qemu-utils" ;;
+        rust) echo "" ;;  # Rust installed via rustup
+        python) echo "" ;;  # Managed via uv
+        go) echo "" ;;  # Installed from tarball
+        javascript) echo "" ;;  # Installed via nvm
+        java) echo "openjdk-17-jdk maven gradle ant" ;;
+        ruby) echo "ruby-full ruby-dev libreadline-dev libyaml-dev libsqlite3-dev sqlite3 libxml2-dev libxslt1-dev libcurl4-openssl-dev software-properties-common" ;;
+        php) echo "php php-cli php-fpm php-mysql php-pgsql php-sqlite3 php-curl php-gd php-mbstring php-xml php-zip composer" ;;
+        database) echo "postgresql-client mysql-client sqlite3 redis-tools mongodb-clients" ;;
+        devops) echo "docker.io docker-compose kubectl helm terraform ansible awscli" ;;
+        web) echo "nginx apache2-utils httpie" ;;
+        embedded) echo "gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen platformio" ;;
+        datascience) echo "r-base" ;;
+        security) echo "nmap tcpdump wireshark-common netcat-openbsd john hashcat hydra" ;;
+        ml) echo "" ;;  # Just cmake needed, comes from build-tools now
+        *) echo "" ;;
+    esac
+}
 
-# Shell / net / file utilities (optional)
-PROFILES[shell]="rsync openssh-client man-db gnupg2 aggregate file"
-PROFILE_DESCRIPTIONS[shell]="Optional Shell Tools (fzf, SSH, man, rsync, file)"
+# Get profile description
+get_profile_description() {
+    case "$1" in
+        core) echo "Core Development Utilities (compilers, VCS, shell tools)" ;;
+        build-tools) echo "Build Tools (CMake, autotools, Ninja)" ;;
+        shell) echo "Optional Shell Tools (fzf, SSH, man, rsync, file)" ;;
+        networking) echo "Network Tools (IP stack, DNS, route tools)" ;;
+        c) echo "C/C++ Development (debuggers, analyzers, Boost, ncurses, cmocka)" ;;
+        openwrt) echo "OpenWRT Development (cross toolchain, QEMU, distro tools)" ;;
+        rust) echo "Rust Development (installed via rustup)" ;;
+        python) echo "Python Development (managed via uv)" ;;
+        go) echo "Go Development (installed from upstream archive)" ;;
+        javascript) echo "JavaScript/TypeScript (Node installed via nvm)" ;;
+        java) echo "Java Development (OpenJDK 17, Maven, Gradle, Ant)" ;;
+        ruby) echo "Ruby Development (gems, native deps, XML/YAML)" ;;
+        php) echo "PHP Development (PHP + extensions + Composer)" ;;
+        database) echo "Database Tools (clients for major databases)" ;;
+        devops) echo "DevOps Tools (Docker, Kubernetes, Terraform, etc.)" ;;
+        web) echo "Web Dev Tools (nginx, HTTP test clients)" ;;
+        embedded) echo "Embedded Dev (ARM toolchain, serial debuggers)" ;;
+        datascience) echo "Data Science (Python, Jupyter, R)" ;;
+        security) echo "Security Tools (scanners, crackers, packet tools)" ;;
+        ml) echo "Machine Learning (build layer only; Python via uv)" ;;
+        *) echo "" ;;
+    esac
+}
 
-PROFILES[networking]="iptables ipset iproute2 dnsutils"
-PROFILE_DESCRIPTIONS[networking]="Network Tools (IP stack, DNS, route tools)"
+# Get all profile names
+get_all_profile_names() {
+    echo "core build-tools shell networking c openwrt rust python go javascript java ruby php database devops web embedded datascience security ml"
+}
 
-# Domain-specific
-PROFILES[c]="gdb valgrind clang clang-format clang-tidy cppcheck doxygen libboost-all-dev libcmocka-dev libcmocka0 lcov libncurses5-dev libncursesw5-dev"
-PROFILE_DESCRIPTIONS[c]="C/C++ Development (debuggers, analyzers, Boost, ncurses, cmocka)"
+# Check if profile exists
+profile_exists() {
+    local profile="$1"
+    for p in $(get_all_profile_names); do
+        [[ "$p" == "$profile" ]] && return 0
+    done
+    return 1
+}
 
-PROFILES[openwrt]="rsync libncurses5-dev zlib1g-dev gawk gettext xsltproc libelf-dev ccache subversion swig time qemu-system-arm qemu-system-aarch64 qemu-system-mips qemu-system-x86 qemu-utils"
-PROFILE_DESCRIPTIONS[openwrt]="OpenWRT Development (cross toolchain, QEMU, distro tools)"
-
-PROFILES[rust]=""  # Rust installed via rustup
-PROFILE_DESCRIPTIONS[rust]="Rust Development (installed via rustup)"
-
-PROFILES[python]=""  # Managed via uv
-PROFILE_DESCRIPTIONS[python]="Python Development (managed via uv)"
-
-PROFILES[go]=""  # Installed from tarball
-PROFILE_DESCRIPTIONS[go]="Go Development (installed from upstream archive)"
-
-PROFILES[javascript]=""  # Installed via nvm
-PROFILE_DESCRIPTIONS[javascript]="JavaScript/TypeScript (Node installed via nvm)"
-
-PROFILES[java]="openjdk-17-jdk maven gradle ant"
-PROFILE_DESCRIPTIONS[java]="Java Development (OpenJDK 17, Maven, Gradle, Ant)"
-
-PROFILES[ruby]="ruby-full ruby-dev libreadline-dev libyaml-dev libsqlite3-dev sqlite3 libxml2-dev libxslt1-dev libcurl4-openssl-dev software-properties-common"
-PROFILE_DESCRIPTIONS[ruby]="Ruby Development (gems, native deps, XML/YAML)"
-
-PROFILES[php]="php php-cli php-fpm php-mysql php-pgsql php-sqlite3 php-curl php-gd php-mbstring php-xml php-zip composer"
-PROFILE_DESCRIPTIONS[php]="PHP Development (PHP + extensions + Composer)"
-
-PROFILES[database]="postgresql-client mysql-client sqlite3 redis-tools mongodb-clients"
-PROFILE_DESCRIPTIONS[database]="Database Tools (clients for major databases)"
-
-PROFILES[devops]="docker.io docker-compose kubectl helm terraform ansible awscli"
-PROFILE_DESCRIPTIONS[devops]="DevOps Tools (Docker, Kubernetes, Terraform, etc.)"
-
-PROFILES[web]="nginx apache2-utils httpie"
-PROFILE_DESCRIPTIONS[web]="Web Dev Tools (nginx, HTTP test clients)"
-
-PROFILES[embedded]="gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen platformio"
-PROFILE_DESCRIPTIONS[embedded]="Embedded Dev (ARM toolchain, serial debuggers)"
-
-PROFILES[datascience]="r-base"
-PROFILE_DESCRIPTIONS[datascience]="Data Science (Python, Jupyter, R)"
-
-PROFILES[security]="nmap tcpdump wireshark-common netcat-openbsd john hashcat hydra"
-PROFILE_DESCRIPTIONS[security]="Security Tools (scanners, crackers, packet tools)"
-
-PROFILES[ml]=""  # Just cmake needed, comes from build-tools now
-PROFILE_DESCRIPTIONS[ml]="Machine Learning (build layer only; Python via uv)"
+#--- End Profile Arrays
 
 
 expand_profile() {
@@ -903,8 +911,9 @@ main() {
             shift
             cecho "Available ClaudeBox Profiles:" "$CYAN"
             echo
-            for profile in $(printf '%s\n' "${!PROFILE_DESCRIPTIONS[@]}" | sort); do
-                echo -e "  ${GREEN}$profile${NC} - ${PROFILE_DESCRIPTIONS[$profile]}"
+            for profile in $(get_all_profile_names | tr ' ' '\n' | sort); do
+                local desc=$(get_profile_description "$profile")
+                echo -e "  ${GREEN}$profile${NC} - $desc"
             done
             exit 0
             ;;
@@ -942,8 +951,9 @@ main() {
                     # Show available profiles
                     cecho "Available ClaudeBox Profiles:" "$CYAN"
                     echo
-                    for profile in $(printf '%s\n' "${!PROFILE_DESCRIPTIONS[@]}" | sort); do
-                        echo -e "  ${GREEN}$profile${NC} - ${PROFILE_DESCRIPTIONS[$profile]}"
+                    for profile in $(get_all_profile_names | tr ' ' '\n' | sort); do
+                        local desc=$(get_profile_description "$profile")
+                        echo -e "  ${GREEN}$profile${NC} - $desc"
                     done
                     exit 0
                     ;;
@@ -993,7 +1003,7 @@ main() {
             while [[ $# -gt 0 ]]; do
                 # accept profiles even if the value is empty
                 # check that the key exists in the PROFILES associative array
-                if [[ -v PROFILES[$1] ]]; then
+                if profile_exists "$1"; then
                     selected+=("$1")
                     shift
                 else
@@ -1817,11 +1827,12 @@ DOCKERFILE
                 # APT install layers (1 per profile)
                 for profile in "${unique_profiles[@]}"; do
                         # Convert space-separated package string to array
-                        IFS=' ' read -ra pkg_list <<< "${PROFILES[$profile]:-}"
+                        local packages=$(get_profile_packages "$profile")
+                        IFS=' ' read -ra pkg_list <<< "$packages"
                         [[ ${#pkg_list[@]} -eq 0 ]] && continue
 
         cat >> "$dockerfile" <<DOCKERFILE
-# ${PROFILE_DESCRIPTIONS[$profile]}
+# $(get_profile_description "$profile")
 RUN export DEBIAN_FRONTEND=noninteractive && \\
         apt-get update && \\
         apt-get install -y --no-autoremove ${pkg_list[*]} && \\
@@ -2034,11 +2045,15 @@ EOF
 
    # Flag Prioritizer System
    # Define control flags and their priority (lower number = higher priority)
-   declare -A CONTROL_FLAGS=(
-       ["--shell-mode"]=1
-       ["--enable-sudo"]=2
-       ["--disable-firewall"]=3
-   )
+   # Using function for Bash 3.2 compatibility
+   get_control_flag_priority() {
+       case "$1" in
+           "--shell-mode") echo 1 ;;
+           "--enable-sudo") echo 2 ;;
+           "--disable-firewall") echo 3 ;;
+           *) echo "" ;;
+       esac
+   }
    
    # Check if .claude/projects exists, if not remove -c flag
    if [[ ! -d "$PROJECT_CLAUDEBOX_DIR/.claude/projects" ]]; then
@@ -2058,7 +2073,8 @@ EOF
    
    # Extract control flags and separate from Claude flags
    for arg in "${temp_args[@]}"; do
-       if [[ -n "${CONTROL_FLAGS[$arg]:-}" ]]; then
+       local priority=$(get_control_flag_priority "$arg")
+       if [[ -n "$priority" ]]; then
            control_flags+=("$arg")
        else
            claude_flags+=("$arg")
@@ -2069,7 +2085,7 @@ EOF
    if [[ ${#control_flags[@]} -gt 0 ]]; then
        IFS=$'\n' control_flags=($(
            for flag in "${control_flags[@]}"; do
-               echo "${CONTROL_FLAGS[$flag]}:$flag"
+               echo "$(get_control_flag_priority "$flag"):$flag"
            done | sort -n | cut -d: -f2
        ))
    fi
@@ -2089,7 +2105,7 @@ EOF
        -e "TERM=${TERM:-xterm-256color}" \
        --cap-add NET_ADMIN \
        --cap-add NET_RAW \
-       "$IMAGE_NAME" "${control_flags[@]}" "${claude_flags[@]}"
+       "$IMAGE_NAME" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
 }
 
 main "$@"
