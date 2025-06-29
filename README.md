@@ -399,6 +399,10 @@ Made with ❤️ for developers who love clean, reproducible environments
 
 ## 📝 Changelog
 
+### v1.0.0-rc6
+- **Bash 3.x Compatibility**: Fixed uppercase conversion syntax for macOS and older systems
+- **Portable Script**: Replaced Bash 4+ specific `${var^^}` with POSIX-compliant `tr` command
+
 ### v1.0.0-rc5
 - **ShellCheck Improvements**: Applied numerous code quality fixes for better reliability
 - **Fixed Unbound Variables**: Resolved `XAUTHORITY`, `profile_file`, and other variable reference errors
