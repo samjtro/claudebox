@@ -24,7 +24,8 @@ esac
 is_case_sensitive_fs() {
   local t1 t2
   t1="$(mktemp "/tmp/.fs_case_test.XXXXXXXX")"
-  t2="${t1^^}"          # same name, different case
+  # More portable uppercase conversion
+  t2="$(echo "$t1" | tr '[:lower:]' '[:upper:]')"
   touch "$t1"
   [[ -e "$t2" && "$t1" != "$t2" ]] && { rm -f "$t1"; return 1; }
   rm -f "$t1"
