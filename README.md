@@ -399,30 +399,28 @@ Made with ❤️ for developers who love clean, reproducible environments
 
 ## 📝 Changelog
 
-### v1.0.0-rc7
-- **Full Bash 3.2 Compatibility**: Complete macOS compatibility with function-based profile system
-- **Profile Arrays Removed**: Replaced associative arrays with portable getter functions
-- **No More Unbound Variables**: Fixed all array access patterns that caused errors in strict mode
-- **Single Implementation**: One codebase works for both Bash 3.2 and 4+ (no version detection needed)
-
-### v1.0.0-rc6
-- **Bash 3.x Compatibility**: Fixed uppercase conversion syntax for macOS and older systems
-- **Portable Script**: Replaced Bash 4+ specific `${var^^}` with POSIX-compliant `tr` command
-- **Associative Arrays**: Replaced Bash 4+ associative arrays with portable functions for profile management
-
-### v1.0.0-rc5
-- **ShellCheck Improvements**: Applied numerous code quality fixes for better reliability
-- **Fixed Unbound Variables**: Resolved `XAUTHORITY`, `profile_file`, and other variable reference errors
-- **Clean Command Fixes**: Removed conflicting `-c` shortcuts and fixed `clean --project all` functionality
-- **Terminal Resize Support**: Added proper SIGWINCH handlers for both bash and zsh in containers
-- **Build System**: Improved error handling and package installation in Dockerfile
-
 ### v1.0.0-rc4
-- **Directory Restructuring**: Projects now organized under `~/.claudebox/projects/` for cleaner separation
-- **Consolidated Configuration**: Single `config.ini` per project replaces multiple config files
-- **Fixed JSON Handling**: Proper initialization of `.claude.json` prevents auth loss and parse errors
-- **Smart -c Flag Filtering**: Auto-removes continue flag when no conversation exists
-- **Improved Project Management**: Better project listing with size/status display
+- **Full macOS/Bash 3.2 Compatibility**: Complete rewrite for Bash 3.2 using function-based profile system
+  - Replaced associative arrays with portable getter functions
+  - Fixed uppercase conversion `${var^^}` with POSIX-compliant `tr` command
+  - Eliminated all "unbound variable" errors in strict mode
+  - Single implementation works for both Bash 3.2 and 4+
+- **Project Isolation & Management**: Major improvements to project handling
+  - Projects organized under `~/.claudebox/projects/` for cleaner separation
+  - Single `config.ini` per project replaces multiple config files
+  - Better project listing with size/status display
+  - Fixed JSON handling prevents auth loss
+  - Smart -c flag filtering when no conversation exists
+- **Stability & Quality**: Comprehensive improvements
+  - Applied ShellCheck fixes for better reliability
+  - Fixed unbound variables (`XAUTHORITY`, `profile_file`, etc.)
+  - Improved clean command with fixed `--project all` functionality
+  - Added terminal resize support (SIGWINCH handlers)
+  - Enhanced error handling in build system
+- **Testing**: Added comprehensive test suite
+  - Bash 3.2 compatibility tests
+  - Docker-based testing for actual Bash 3.2 verification
+  - 13 tests covering all compatibility aspects
 
 ### v1.0.0-rc3
 - **Flag Prioritizer System**: Implemented robust flag sorting to ensure control flags are processed in correct order
