@@ -399,9 +399,16 @@ Made with ❤️ for developers who love clean, reproducible environments
 
 ## 📝 Changelog
 
+### v1.0.0-rc7
+- **Full Bash 3.2 Compatibility**: Complete macOS compatibility with function-based profile system
+- **Profile Arrays Removed**: Replaced associative arrays with portable getter functions
+- **No More Unbound Variables**: Fixed all array access patterns that caused errors in strict mode
+- **Single Implementation**: One codebase works for both Bash 3.2 and 4+ (no version detection needed)
+
 ### v1.0.0-rc6
 - **Bash 3.x Compatibility**: Fixed uppercase conversion syntax for macOS and older systems
 - **Portable Script**: Replaced Bash 4+ specific `${var^^}` with POSIX-compliant `tr` command
+- **Associative Arrays**: Replaced Bash 4+ associative arrays with portable functions for profile management
 
 ### v1.0.0-rc5
 - **ShellCheck Improvements**: Applied numerous code quality fixes for better reliability
