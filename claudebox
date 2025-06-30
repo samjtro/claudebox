@@ -232,11 +232,7 @@ show_spinner() {
     echo -e "\b${GREEN}✓${NC}"
 }
 
-#--- Begin Profile Arrays
-
 # Bash 3.2 compatible profile functions (no associative arrays)
-
-# Get profile packages
 get_profile_packages() {
     case "$1" in
         core) echo "gcc g++ make git pkg-config libssl-dev libffi-dev zlib1g-dev tmux" ;;
@@ -263,7 +259,6 @@ get_profile_packages() {
     esac
 }
 
-# Get profile description
 get_profile_description() {
     case "$1" in
         core) echo "Core Development Utilities (compilers, VCS, shell tools)" ;;
@@ -290,12 +285,10 @@ get_profile_description() {
     esac
 }
 
-# Get all profile names
 get_all_profile_names() {
     echo "core build-tools shell networking c openwrt rust python go javascript java ruby php database devops web embedded datascience security ml"
 }
 
-# Check if profile exists
 profile_exists() {
     local profile="$1"
     for p in $(get_all_profile_names); do
@@ -303,9 +296,6 @@ profile_exists() {
     done
     return 1
 }
-
-#--- End Profile Arrays
-
 
 expand_profile() {
     case "$1" in
@@ -324,9 +314,6 @@ expand_profile() {
     esac
 }
 
-
-
-# Docker operations
 docker_exec_root() {
     docker exec -u root "$@"
 }
@@ -335,9 +322,147 @@ docker_exec_user() {
     docker exec -u "$DOCKER_USER" "$@"
 }
 
-# Helper functions for project profiles
+# Standardized container run function - ensures consistent mounts and environment
+run_claudebox_container() {
+    local container_name="$1"
+    local run_mode="$2"  # "interactive", "detached", "pipe", or "attached"
+    shift 2
+    local container_args=("$@")
+    
+    # Handle "attached" mode - start detached, wait, then attach
+    if [[ "$run_mode" == "attached" ]]; then
+        # Start detached
+        run_claudebox_container "$container_name" "detached" "${container_args[@]}" >/dev/null
+        
+        # Show progress while container initializes
+        fillbar
+        
+        # Wait for container to be ready
+        while ! docker exec "$container_name" true 2>/dev/null; do
+            sleep 0.1
+        done
+        
+        fillbar stop
+        
+        # Attach to ready container
+        docker attach "$container_name"
+        
+        return
+    fi
+    
+    local docker_args=()
+    
+    # Set run mode
+    case "$run_mode" in
+        "interactive")
+            docker_args+=("-it" "--rm" "--init")
+            ;;
+        "detached")
+            docker_args+=("-d")
+            if [[ -n "$container_name" ]]; then
+                docker_args+=("--name" "$container_name")
+            fi
+            ;;
+        "pipe")
+            docker_args+=("--rm" "--init")
+            ;;
+    esac
+    
+    # Standard configuration for ALL containers
+    docker_args+=(
+        -w /workspace
+        -v "$PROJECT_DIR":/workspace
+        -v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude
+        -v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json
+        -v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config
+        -v "$PROJECT_CLAUDEBOX_DIR/.cache":/home/$DOCKER_USER/.cache
+        -v "$HOME/.ssh":"/home/$DOCKER_USER/.ssh:ro"
+        -e "NODE_ENV=${NODE_ENV:-production}"
+        -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
+        -e "CLAUDEBOX_PROJECT_NAME=$project_folder_name"
+        -e "TERM=${TERM:-xterm-256color}"
+        --cap-add NET_ADMIN
+        --cap-add NET_RAW
+        "$IMAGE_NAME"
+    )
+    
+    # Add any additional arguments
+    if [[ ${#container_args[@]} -gt 0 ]]; then
+        docker_args+=("${container_args[@]}")
+    fi
+    
+    docker run "${docker_args[@]}"
+}
+
+FILLBAR_PID=""
+
+fillbar() {
+    case "${1:-}" in
+        stop)
+            if [ ! -z "$FILLBAR_PID" ]; then
+                kill $FILLBAR_PID 2>/dev/null
+            fi
+            printf "\r\033[K"
+            tput cnorm
+            FILLBAR_PID=""
+            ;;
+        *)
+            (
+                p=0
+                tput civis
+                while true; do
+                    printf "\r"
+                    full=$((p / 8))
+                    part=$((p % 8))
+                    i=0
+                    while [ $i -lt $full ]; do
+                        printf "█"
+                        i=$((i + 1))
+                    done
+                    if [ $part -gt 0 ]; then
+                        pb=$(printf %x $((0x258F - part + 1)))
+                        printf "\\u$pb"
+                    fi
+                    p=$((p + 1))
+                    sleep 0.01
+                done
+            ) &
+            FILLBAR_PID=$!
+            ;;
+    esac
+}
+
+show_help() {
+    if docker image inspect "$IMAGE_NAME" &>/dev/null; then
+        run_claudebox_container "" "pipe" --help | sed '1s/claude/claudebox/g'
+        echo
+        cecho "Added Options:" "$WHITE"
+        echo -e "${CYAN}  --verbose                       ${WHITE}Show detailed output"
+        echo -e "${CYAN}  --enable-sudo                   ${WHITE}Enable sudo without password"
+        echo -e "${CYAN}  --disable-firewall              ${WHITE}Disable network restrictions"
+        echo
+        cecho "Added Commands:" "$WHITE"
+        echo -e "  profiles                        List all available profiles"
+        echo -e "  projects                        List all projects with paths"
+        echo -e "  profile                         Profile management menu"
+        echo -e "  install <packages>              Install apt packages"
+        echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
+        echo -e "  shell                           Open transient shell (changes NOT saved)"
+        echo -e "  shell admin                     Open admin shell (sudo, no firewall, changes saved)"
+        echo -e "  allowlist                       Show/edit firewall allowlist"
+        echo -e "  info                            Show comprehensive project info"
+        echo -e "  clean                           Menu of cleanup tasks"
+        echo -e "  unlink                          Remove claudebox symlink"
+        echo -e "  rebuild                         Rebuild the Docker image from scratch${NC}"
+    else
+        cecho "ClaudeBox - Claude Code Docker Environment" "$CYAN"
+        echo
+        warn "First run setup required!"
+        echo "Run script without arguments first to build the Docker image."
+    fi
+}
+
 get_project_folder_name() {
-    # Generate lowercase name with hash suffix for uniqueness
     local clean_name=$(echo "$1" | sed 's|^/||; s|[^a-zA-Z0-9]|_|g; s|_+|_|g; s|^_||; s|_$||' | tr '[:upper:]' '[:lower:]')
     local hash=$(echo -n "$1" | sha256sum | cut -c1-6)
     echo "${clean_name}_${hash}"
@@ -350,15 +475,13 @@ get_profile_file_path() {
     echo "$project_dir/config.ini"
 }
 
-# Read a value from config.ini
 read_config_value() {
     local config_file="$1"
     local section="$2"
     local key="$3"
-    
+
     [[ -f "$config_file" ]] || return 1
-    
-    # Use awk to extract value from INI file
+
     awk -F ' *= *' -v section="[$section]" -v key="$key" '
         $0 == section { in_section=1; next }
         /^\[/ { in_section=0 }
@@ -366,81 +489,62 @@ read_config_value() {
     ' "$config_file"
 }
 
-# Get project ID from path
 get_project_by_path() {
     local search_path="$1"
     local abs_path=$(realpath "$search_path" 2>/dev/null || echo "$search_path")
-    
-    # Check all project directories for matching path in config.ini
-    # shellcheck disable=SC2231 # We want pathname expansion even when no dirs
     for project_dir in "$HOME/.claudebox/projects"/*/ ; do
         [[ -d "$project_dir" ]] || continue
-        
         local config_file="$project_dir/config.ini"
         [[ -f "$config_file" ]] || continue
-        
         local stored_path=$(read_config_value "$config_file" "project" "path")
         if [[ "$stored_path" == "$abs_path" ]]; then
             basename "$project_dir"
             return 0
         fi
     done
-    
     return 1
 }
 
-# List all projects with their paths
 list_all_projects() {
     local projects_found=0
-    
     # shellcheck disable=SC2231 # We want pathname expansion even when no dirs
     for project_dir in "$HOME/.claudebox/projects"/*/ ; do
         [[ -d "$project_dir" ]] || continue
-        
         projects_found=1
         local project_id=$(basename "$project_dir")
         local original_path="(unknown)"
         local image_status="❌"
         local image_size="-"
-        
-        # Get original path from config.ini
         local config_file="$project_dir/config.ini"
         if [[ -f "$config_file" ]]; then
             local path_value=$(read_config_value "$config_file" "project" "path")
             [[ -n "$path_value" ]] && original_path="$path_value"
         fi
-        
-        # Check Docker image
         local image_name="claudebox-${project_id}"
         if docker image inspect "$image_name" &>/dev/null; then
             image_status="✅"
             image_size=$(docker images --filter "reference=$image_name" --format "{{.Size}}")
         fi
-        
         printf "%10s  %s  %s\n" "$image_size" "$image_status" "$original_path"
     done
-    
     [[ $projects_found -eq 0 ]] && return 1
     return 0
 }
 
-# Resolve project path from current directory or argument
 resolve_project_path() {
     local input_path="${1:-$PWD}"
-    
-    # If it's already a project ID (contains underscore and ends with hash)
+
     if [[ "$input_path" =~ _[a-f0-9]{6}$ ]] && [[ -d "$HOME/.claudebox/$input_path" ]]; then
         echo "$input_path"
         return 0
     fi
-    
-    # Otherwise treat as path and look up project
+
     local project_id=$(get_project_by_path "$input_path")
     if [[ -n "$project_id" ]]; then
         echo "$project_id"
         return 0
     fi
-    
+
     return 1
 }
 
@@ -465,11 +569,9 @@ update_profile_section() {
     shift 2
     local new_items=("$@")
 
-    # Read existing items
     local existing_items=()
     readarray -t existing_items < <(read_profile_section "$profile_file" "$section")
 
-    # Merge with new items (avoid duplicates)
     local all_items=()
     for item in "${existing_items[@]}"; do
         [[ -n "$item" ]] && all_items+=("$item")
@@ -483,9 +585,7 @@ update_profile_section() {
         [[ "$found" == "false" ]] && all_items+=("$item")
     done
 
-    # Write updated profile file
     {
-        # Preserve other sections
         if [[ -f "$profile_file" ]]; then
             awk -v sect="$section" '
                 BEGIN { in_section=0; skip_section=0 }
@@ -498,7 +598,6 @@ update_profile_section() {
             ' "$profile_file"
         fi
 
-        # Add our section
         echo "[$section]"
         for item in "${all_items[@]}"; do
             echo "$item"
@@ -507,18 +606,14 @@ update_profile_section() {
     } > "${profile_file}.tmp" && mv "${profile_file}.tmp" "$profile_file"
 }
 
-# Project-specific folder setup
 setup_project_folder() {
-    # Create mount points for Docker volumes
     mkdir -p "$PROJECT_CLAUDEBOX_DIR/.claude"
     mkdir -p "$PROJECT_CLAUDEBOX_DIR/.config"
     mkdir -p "$PROJECT_CLAUDEBOX_DIR/.cache"
-    # Only create .claude.json if it doesn't exist
     if [[ ! -f "$PROJECT_CLAUDEBOX_DIR/.claude.json" ]]; then
         echo '{}' > "$PROJECT_CLAUDEBOX_DIR/.claude.json"
     fi
-    
-    # Initialize config.ini with project path if it doesn't exist
+
     local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
     if [[ ! -f "$config_file" ]]; then
         cat > "$config_file" <<EOF
@@ -535,7 +630,6 @@ EOF
 }
 
 
-# Setup Claude agent command
 setup_claude_agent_command() {
     mkdir -p .claude/commands
     cat << 'EOF' > .claude/commands/taskengine.md
@@ -585,7 +679,6 @@ BEGIN.
 EOF
 }
 
-# Create files to copy into the image
 create_build_files() {
     local build_context="$1"
 
@@ -611,31 +704,23 @@ iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 # Default allowed domains
 DEFAULT_DOMAINS="api.anthropic.com console.anthropic.com statsig.anthropic.com sentry.io"
 
-# Read additional domains from config.ini [firewall] section
 ALLOWED_DOMAINS="$DEFAULT_DOMAINS"
-# Try project-specific config.ini
 CONFIG_FILE="/home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/config.ini"
 if [ -f "$CONFIG_FILE" ]; then
-    # Read firewall section from config.ini
     in_firewall=0
     while IFS= read -r line; do
-        # Check if we're entering firewall section
         if [[ "$line" == "[firewall]" ]]; then
             in_firewall=1
             continue
         fi
-        # Check if we're leaving the section
         if [[ "$line" =~ ^\[.*\]$ ]] && [ $in_firewall -eq 1 ]; then
             break
         fi
-        # Process lines in firewall section
         if [ $in_firewall -eq 1 ]; then
-            # Skip comments and empty lines
             [[ "$line" =~ ^#.* ]] && continue
             [[ -z "$line" ]] && continue
-            # Remove wildcards for now (*.example.com becomes example.com)
             domain="${line#\*.}"
-            domain="$(echo "$domain" | xargs)" # Trim whitespace
+            domain="$(echo "$domain" | xargs)"
             [[ -n "$domain" ]] && ALLOWED_DOMAINS="$ALLOWED_DOMAINS $domain"
         fi
     done < "$CONFIG_FILE"
@@ -648,11 +733,9 @@ if command -v ipset >/dev/null 2>&1; then
     ipset create allowed-ips hash:net
 
     for domain in $ALLOWED_DOMAINS; do
-        # Check if it's an IP range
         if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then
             ipset add allowed-ips $domain 2>/dev/null || true
         else
-            # It's a domain, resolve it
             ips=$(getent hosts $domain 2>/dev/null | awk '{print $1}')
             for ip in $ips; do
                 ipset add allowed-domains $ip 2>/dev/null || true
@@ -662,12 +745,10 @@ if command -v ipset >/dev/null 2>&1; then
     iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
     iptables -A OUTPUT -m set --match-set allowed-ips dst -j ACCEPT
 else
-    # Fallback without ipset
     for domain in $ALLOWED_DOMAINS; do
         if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then
             iptables -A OUTPUT -d $domain -j ACCEPT
         else
-            # Resolve domain to IPs
             ips=$(getent hosts $domain 2>/dev/null | awk '{print $1}')
             for ip in $ips; do
                 iptables -A OUTPUT -d $ip -j ACCEPT
@@ -687,7 +768,6 @@ set -euo pipefail
 
 export NVM_DIR="$HOME/.nvm"
 
-# Check if nvm exists before sourcing
 if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     \. "$NVM_DIR/nvm.sh"
     nvm use default >/dev/null 2>&1 || {
@@ -697,7 +777,6 @@ else
     echo "Warning: NVM not found at $NVM_DIR" >&2
 fi
 rm -f "$(realpath "$0")"
-# Execute claude with all arguments
 exec claude "$@"
 EOF
 
@@ -719,26 +798,20 @@ done
 set -- "${new_args[@]}"
 export DISABLE_FIREWALL
 
-# Initialize firewall FIRST (before any mode checks)
 if [ -f ~/init-firewall ]; then
     ~/init-firewall || true
 fi
 
-# Set up sudo if requested
 if [ "$ENABLE_SUDO" = "true" ]; then
     echo "DOCKERUSER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/DOCKERUSER
     chmod 0440 /etc/sudoers.d/DOCKERUSER
 fi
 
-# Set up shared commands
 if [ -d /home/DOCKERUSER/.claudebox/commands ]; then
-    # Ensure .claude/commands directory exists
     mkdir -p /home/DOCKERUSER/.claude/commands
-    
-    # Copy shared commands (don't overwrite existing project-specific ones)
+
     cp -n /home/DOCKERUSER/.claudebox/commands/* /home/DOCKERUSER/.claude/commands/ 2>/dev/null || true
-    
-    # Ensure proper ownership
+
     chown -R DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claude
 fi
 
@@ -765,16 +838,12 @@ fi
 
 cd /home/DOCKERUSER
 
-# Check if we're in shell mode
 if [[ "${SHELL_MODE:-false}" == "true" ]]; then
-    # Clean up claude-wrapper for shell mode - keep home directory clean
     rm -f /home/DOCKERUSER/claude-wrapper
     exec su DOCKERUSER -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
 else
-    # Build command with properly quoted arguments
     cmd="cd /workspace && ~/claude-wrapper"
     for arg in "$@"; do
-        # Escape single quotes in the argument
         escaped_arg=$(echo "$arg" | sed "s/'/'\\\\''/g")
         cmd="$cmd '$escaped_arg'"
     done
@@ -785,7 +854,6 @@ EOF
 
 run_docker_build() {
     info "Running docker build..."
-    # Force BuildKit for better performance and features
     DOCKER_BUILDKIT=1 docker build \
         --build-arg USER_ID="$USER_ID" \
         --build-arg GROUP_ID="$GROUP_ID" \
@@ -796,13 +864,11 @@ run_docker_build() {
         -f "$1" -t "$IMAGE_NAME" "$2"
 }
 
-# Main execution
 main() {
     update_symlink
     local project_folder_name
     project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
     IMAGE_NAME="claudebox-${project_folder_name}"
-    # Check Docker
     local docker_status
     docker_status=$(check_docker; echo $?)
     case $docker_status in
@@ -820,94 +886,54 @@ main() {
             ;;
     esac
 
-    # Check for rebuild, help, and verbose flags anywhere in arguments
     local args=("$@")
     local new_args=()
     local found_rebuild=false
-    local found_help=false
 
     for arg in "${args[@]}"; do
         if [[ "$arg" == "rebuild" ]]; then
             found_rebuild=true
         elif [[ "$arg" == "--verbose" ]]; then
             VERBOSE=true
-            # strip it out so it doesn't become $1 later
-        elif [[ "$arg" == "-h" || "$arg" == "--help" || "$arg" == "help" ]]; then
-            # only global-help if it's literally the first token
-            if [[ "${args[0]}" == "$arg" ]]; then
-                found_help=true
-            fi
-            new_args+=("$arg")
         else
             new_args+=("$arg")
         fi
     done
+    
+    # Set up project variables early - needed by multiple sections
+    local project_folder_name
+    project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+    IMAGE_NAME="claudebox-${project_folder_name}"
+    PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/projects/$project_folder_name"
 
     if [[ "$found_rebuild" == "true" ]]; then
-        # Compute IMAGE_NAME for rebuild
-        local project_folder_name
-        project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-        IMAGE_NAME="claudebox-${project_folder_name}"
         warn "Rebuilding ClaudeBox Docker image (no cache)..."
         if docker image inspect "$IMAGE_NAME" &>/dev/null; then
+            # Remove the specific container for this project
+            docker rm -f "$IMAGE_NAME" 2>/dev/null || true
+            # Remove any old labeled containers
             docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
             docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
         fi
-        # Force no cache for rebuild command
         export CLAUDEBOX_NO_CACHE=true
         set -- "${new_args[@]}"
     fi
 
-    # Compute project folder name early
-    local project_folder_name
-        project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-        IMAGE_NAME="claudebox-${project_folder_name}"
-    project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-    IMAGE_NAME="claudebox-${project_folder_name}"
-    PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/projects/$project_folder_name"
-    
-    # Ensure project directory exists
     mkdir -p "$PROJECT_CLAUDEBOX_DIR"
 
-    # Handle help immediately
-    if [[ "$found_help" == "true" ]]; then
-        if docker image inspect "$IMAGE_NAME" &>/dev/null; then
-            docker run --rm \
-                -u "$DOCKER_USER" \
-                --entrypoint /home/$DOCKER_USER/claude-wrapper \
-                "$IMAGE_NAME" --help | sed '1s/claude/claudebox/g'
-            echo
-            cecho "Added Options:" "$WHITE"
-            echo -e "${CYAN}  --verbose                       ${WHITE}Show detailed output"
-            echo -e "${CYAN}  --enable-sudo                   ${WHITE}Enable sudo without password"
-            echo -e "${CYAN}  --disable-firewall              ${WHITE}Disable network restrictions"
-            echo
-            cecho "Added Commands:" "$WHITE"
-            echo -e "  profiles                        List all available profiles"
-            echo -e "  projects                        List all projects with paths"
-            echo -e "  profile                         Profile management menu"
-            echo -e "  install <packages>              Install apt packages"
-            echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
-            echo -e "  shell                           Open powerline shell in container"
-            echo -e "  allowlist                       Show/edit firewall allowlist"
-            echo -e "  info                            Show comprehensive project info"
-            echo -e "  clean                           Menu of cleanup tasks"
-            echo -e "  unlink                          Remove claudebox symlink"
-            echo -e "  rebuild                         Rebuild the Docker image from scratch${NC}"
-        else
-            cecho "ClaudeBox - Claude Code Docker Environment" "$CYAN"
-            echo
-            warn "First run setup required!"
-            echo "Run script without arguments first to build the Docker image."
+    # Check for help flags early
+    for arg in "$@"; do
+        if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+            show_help
+            exit 0
         fi
-        exit 0
-    fi
+    done
 
-    # Handle commands
     [[ "$VERBOSE" == "true" ]] && echo "Command: ${1:-none}" >&2
+    
+    # First, handle commands that don't require Docker image
     case "${1:-}" in
         profiles)
-            # Direct shortcut to show available profiles
             shift
             cecho "Available ClaudeBox Profiles:" "$CYAN"
             echo
@@ -917,15 +943,15 @@ main() {
             done
             exit 0
             ;;
-            
+
         projects)
-            # List all projects with their paths
+
             shift
             cecho "ClaudeBox Projects:" "$CYAN"
             echo
             printf "%10s  %s  %s\n" "Size" "🐳" "Path"
             printf "%10s  %s  %s\n" "----" "--" "----"
-            
+
             if ! list_all_projects; then
                 echo
                 warn "No ClaudeBox projects found."
@@ -937,18 +963,18 @@ main() {
             echo
             exit 0
             ;;
-            
+
         profile)
             shift
-            # Compute project info
+
             local project_folder_name
             project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
             local profile_file
             profile_file=$(get_profile_file_path)
-            
+
             case "${1:-}" in
                 list|--list|-l)
-                    # Show available profiles
+
                     cecho "Available ClaudeBox Profiles:" "$CYAN"
                     echo
                     for profile in $(get_all_profile_names | tr ' ' '\n' | sort); do
@@ -957,9 +983,9 @@ main() {
                     done
                     exit 0
                     ;;
-                    
+
                 status|--status|-s)
-                    # Show current project status
+
                     cecho "Project: $PROJECT_DIR" "$CYAN"
                     echo
                     if [[ -f "$profile_file" ]]; then
@@ -970,7 +996,7 @@ main() {
                         else
                             cecho "No profiles installed" "$YELLOW"
                         fi
-                        
+
                         local current_packages=()
                         readarray -t current_packages < <(read_profile_section "$profile_file" "packages")
                         if [[ ${#current_packages[@]} -gt 0 ]]; then
@@ -981,9 +1007,9 @@ main() {
                     fi
                     exit 0
                     ;;
-                    
+
                 "")
-                    # Show profile menu
+
                     cecho "ClaudeBox Profile Management:" "$CYAN"
                     echo
                     echo -e "  ${GREEN}profiles${NC}                 Show all available profiles"
@@ -1001,8 +1027,7 @@ main() {
 
             local selected=() remaining=()
             while [[ $# -gt 0 ]]; do
-                # accept profiles even if the value is empty
-                # check that the key exists in the PROFILES associative array
+
                 if profile_exists "$1"; then
                     selected+=("$1")
                     shift
@@ -1017,10 +1042,9 @@ main() {
             local profile_file
             profile_file=$(get_profile_file_path)
 
-            # Update profiles section
+
             update_profile_section "$profile_file" "profiles" "${selected[@]}"
 
-            # Read all current profiles for display
             local all_profiles=()
             readarray -t all_profiles < <(read_profile_section "$profile_file" "profiles")
 
@@ -1031,7 +1055,6 @@ main() {
             fi
             echo
 
-            # Continue to main execution to create container with profiles
             if [[ ${#remaining[@]} -gt 0 ]]; then
                 set -- "${remaining[@]}"
             fi
@@ -1061,10 +1084,8 @@ main() {
             local profile_file
             profile_file=$(get_profile_file_path)
 
-            # Update packages section
             update_profile_section "$profile_file" "packages" "$@"
 
-            # Read all current packages for display
             local all_packages=()
             readarray -t all_packages < <(read_profile_section "$profile_file" "packages")
 
@@ -1075,7 +1096,7 @@ main() {
             fi
             echo
             ;;
-        
+
         unlink)
             if [[ -L "$LINK_TARGET" ]]; then
                 rm -f "$LINK_TARGET"
@@ -1086,68 +1107,126 @@ main() {
             exit 0
             ;;
 
+        shell)
+            shift
+            local persist_mode=false
+            local shell_flags=()
+            
+            # Check if first arg is "admin"
+            if [[ "${1:-}" == "admin" ]]; then
+                persist_mode=true
+                shift
+                # In admin mode, automatically enable sudo and disable firewall
+                shell_flags+=("--enable-sudo" "--disable-firewall")
+            fi
+            
+            # Process remaining flags (only for non-persist mode)
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --enable-sudo|--disable-firewall)
+                        if [[ "$persist_mode" == "false" ]]; then
+                            shell_flags+=("$1")
+                        fi
+                        shift
+                        ;;
+                    *)
+                        warn "Unknown shell flag: $1"
+                        shift
+                        ;;
+                esac
+            done
+
+            echo
+            logo
+            echo
+            
+            # Use the same container as claude
+            local container_name="${IMAGE_NAME}"
+            
+            # Check if container exists (running or stopped)
+            if docker ps -a --filter "name=$container_name" --format "{{.Names}}" | grep -q "^${container_name}$"; then
+                # Container exists - check if it's running
+                if docker ps --filter "name=$container_name" --format "{{.Names}}" | grep -q "^${container_name}$"; then
+                    # Container is running - just exec into it
+                    if [[ "$persist_mode" == "true" ]]; then
+                        cecho "Administration Mode" "$YELLOW"
+                        echo "Any changes made here will be saved until there is a rebuild."
+                        echo
+                    fi
+                    docker exec -it "$container_name" su "$DOCKER_USER" -c "source /home/$DOCKER_USER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
+                else
+                    # Container exists but stopped - restart it
+                    if [[ "$persist_mode" == "true" ]]; then
+                        cecho "Administration Mode" "$YELLOW"
+                        echo "Any changes made here will be saved until there is a rebuild."
+                        echo
+                    fi
+                    docker start -ai "$container_name"
+                fi
+            else
+                # Container doesn't exist - create and run it
+                if [[ "$persist_mode" == "true" ]]; then
+                    cecho "Administration Mode" "$YELLOW"
+                    echo "Any changes made here will be saved until there is a rebuild."
+                    echo
+                fi
+                
+                run_claudebox_container "$container_name" "attached" --shell-mode "${shell_flags[@]}"
+            fi
+            
+            # If admin mode, commit changes after exit
+            if [[ "$persist_mode" == "true" ]]; then
+                fillbar
+                docker commit "$container_name" "$IMAGE_NAME" >/dev/null
+                fillbar stop
+                success "Changes saved to image!"
+            fi
+            
+            exit 0
+            ;;
 
         update|config|mcp|migrate-installer)
-            [[ ! -f /.dockerenv ]] && docker image inspect "$IMAGE_NAME" &>/dev/null || \
-                error "ClaudeBox image not found.\nRun ${GREEN}claudebox${NC} first to build the image."
-                        local project_folder_name
-                        project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-                        IMAGE_NAME="claudebox-${project_folder_name}"
-            local cmd=$1
-            shift
-
-            info "Running $cmd command..."
+            info "Running $1 command with persistence..."
 
             # Create temporary container
             local temp_container="claudebox-temp-${project_folder_name}-$$"
-            docker run -d --name "$temp_container" \
-                -v "$PROJECT_DIR":/workspace \
-                -v "$HOME/.claudebox/$project_folder_name":/home/$DOCKER_USER \
-                -v "$HOME/.claudebox":/home/$DOCKER_USER/.claudebox:ro \
-                -e "CLAUDEBOX_PROJECT_NAME=$project_folder_name" \
-                "$IMAGE_NAME" --shell-mode >/dev/null
-
-            if [[ "$cmd" == "update" ]]; then
-                info "Updating Claude code..."
+            
+            # Run container with all arguments passed through
+            run_claudebox_container "$temp_container" "detached" "$@" >/dev/null
+            
+            # Show progress while waiting and cleaning up
+            fillbar
+            
+            # Wait for container to finish
+            docker wait "$temp_container" >/dev/null
+            
+            # For update command, show version after update
+            if [[ "$1" == "update" ]]; then
                 docker exec -u "$DOCKER_USER" "$temp_container" bash -c "
-                    source \$HOME/.nvm/nvm.sh
-                    nvm use default
-                    claude update
-                    claude --version
-                "
-            else
-                docker exec -it -u "$DOCKER_USER" "$temp_container" \
-                    ~/claude-wrapper "${DEFAULT_FLAGS[@]}" "$cmd" "$@"
+                    source \$HOME/.nvm/nvm.sh && nvm use default >/dev/null 2>&1 && claude --version
+                " 2>/dev/null || true
             fi
 
             # Commit changes back to image
             docker commit "$temp_container" "$IMAGE_NAME" >/dev/null
-            docker stop "$temp_container" 2>/dev/null || true >/dev/null
-            docker rm "$temp_container" 2>/dev/null || true
-
-            success "$cmd completed and saved to image!"
+            docker stop "$temp_container" >/dev/null 2>&1 || true
+            docker rm "$temp_container" >/dev/null 2>&1 || true
+            
+            fillbar stop
+            
+            success "$1 completed and saved to image!"
             exit 0
-            ;;
-
-        shell)
-            shift
-            # Just continue - the flag prioritizer will handle --shell-mode
-            set -- "--shell-mode" "$@"
             ;;
 
         allowlist)
             shift
-            # Compute project info
-            local project_folder_name
-            project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
-            PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/projects/$project_folder_name"
             local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
-            
+
             cecho "🔒 ClaudeBox Firewall Allowlist" "$CYAN"
             echo
             cecho "Current Project: $PROJECT_DIR" "$WHITE"
             echo
-            
+
             if [[ -f "$config_file" ]]; then
                 cecho "Project Configuration:" "$GREEN"
                 echo "  $config_file"
@@ -1167,7 +1246,7 @@ main() {
                         echo "  $line"
                     fi
                 done < "$config_file"
-                
+
                 if [ $in_firewall -eq 0 ]; then
                     echo "  (empty)"
                 fi
@@ -1176,7 +1255,7 @@ main() {
                 echo "  Not yet created (will be created on first run)"
                 echo "  Location: $config_file"
             fi
-            
+
             echo
             cecho "Default Allowed Domains:" "$CYAN"
             echo "  api.anthropic.com, console.anthropic.com, statsig.anthropic.com, sentry.io"
@@ -1188,7 +1267,7 @@ main() {
             cecho "Note:" "$WHITE"
             echo "  Changes take effect on next container start"
             echo "  Use --disable-firewall flag to bypass all restrictions"
-            
+
             exit 0
             ;;
 
@@ -1200,20 +1279,20 @@ main() {
                     # Remove all claudebox containers
                     docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
                     docker ps -a --format "{{.Names}}" | grep "^claudebox-" | xargs -r docker rm -f 2>/dev/null || true
-                    
+
                     # Remove ALL claudebox images (including base)
                     docker images --filter "reference=claudebox-*" -q | xargs -r docker rmi -f 2>/dev/null || true
                     docker images --filter "reference=claudebox" -q | xargs -r docker rmi -f 2>/dev/null || true
-                    
+
                     # Remove dangling images
                     docker images -f "dangling=true" -q | xargs -r docker rmi -f 2>/dev/null || true
-                    
+
                     # Prune build cache
                     docker builder prune -af 2>/dev/null || true
-                    
+
                     # Remove volumes
                     docker volume ls -q --filter "name=claudebox" | xargs -r docker volume rm 2>/dev/null || true
-                    
+
                     success "Docker cleanup complete!"
                     ;;
                 --image|-i)
@@ -1271,42 +1350,37 @@ main() {
                     ;;
                 --project|-p)
                     shift
-                    
-                    # Check if a path was provided after --project
+
                     local target_path="$PROJECT_DIR"
                     local project_folder_name
-                    
-                    # If next arg exists and doesn't start with -, treat as path
+
                     if [[ $# -gt 0 ]] && [[ "${1:0:1}" != "-" ]] && [[ "$1" != "all" && "$1" != "data" && "$1" != "docker" && "$1" != "profiles" && "$1" != "tools" ]]; then
                         target_path="$1"
                         shift
-                        
-                        # Try to resolve the project from the path
+
                         project_folder_name=$(resolve_project_path "$target_path")
                         if [[ -z "$project_folder_name" ]]; then
                             error "No ClaudeBox project found at: $target_path"
                         fi
                     else
-                        # Use current directory
                         project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
                     fi
-                    
+
                     local project_claudebox_dir="$HOME/.claudebox/projects/$project_folder_name"
                     local image_name="claudebox-${project_folder_name}"
-                    
-                    # Get original path for display
+
                     local display_path="$PROJECT_DIR"
                     local config_file="$project_claudebox_dir/config.ini"
                     if [[ -f "$config_file" ]]; then
                         local path_value=$(read_config_value "$config_file" "project" "path")
                         [[ -n "$path_value" ]] && display_path="$path_value"
                     fi
-                    
+
                     case "${1:-}" in
                         profiles|tools)
                             warn "Clearing profile configuration for: $display_path"
                             if [[ -f "$config_file" ]]; then
-                                # Clear profiles and packages sections
+
                                 {
                                     awk '/^\[profiles\]/ { profiles=1; print; print ""; next }
                                          /^\[packages\]/ { packages=1; print; print ""; next }
@@ -1335,23 +1409,19 @@ main() {
                             ;;
                         all)
                             warn "Removing all project artifacts for: $display_path"
-                            # Remove profile
                             if [[ -f "$config_file" ]]; then
                                 rm -f "$config_file"
                                 success "Removed profile configuration"
                             fi
-                            # Remove data
                             if [[ -d "$project_claudebox_dir" ]]; then
                                 rm -rf "$project_claudebox_dir"
                                 success "Removed project data folder"
                             fi
-                            # Remove Docker image
                             docker rmi -f "$image_name" 2>/dev/null && \
                                 success "Removed Docker image" || \
                                 info "No Docker image found"
                             ;;
                         *)
-                            # Show project cleanup submenu
                             cecho "ClaudeBox Project Clean Options:" "$CYAN"
                             echo
                             echo -e "  ${GREEN}clean --project [path] profiles${NC} Remove installed profiles & packages"
@@ -1375,7 +1445,6 @@ main() {
                     exit 0
                     ;;
                 *)
-                    # Show menu by default
                     cecho "ClaudeBox Clean Options:" "$CYAN"
                     echo
                     echo -e "  ${GREEN}clean --containers${NC}       Remove all containers (preserves image)"
@@ -1400,36 +1469,8 @@ main() {
             exit 0
             ;;
 
-        help|--help|-h)
-            if docker image inspect "$IMAGE_NAME" &>/dev/null; then
-                docker run --rm \
-                    -u "$DOCKER_USER" \
-                    --entrypoint /home/$DOCKER_USER/claude-wrapper \
-                    "$IMAGE_NAME" --help | sed '1s/claude/claudebox/g'
-                echo
-                cecho "Added Options:" "$WHITE"
-                echo -e "${CYAN}  --verbose                       ${WHITE}Show detailed output"
-                echo -e "${CYAN}  --enable-sudo                   ${WHITE}Enable sudo without password"
-                echo -e "${CYAN}  --disable-firewall              ${WHITE}Disable network restrictions"
-                echo
-                cecho "Added Commands:" "$WHITE"
-                echo -e "  profiles                        List all available profiles"
-                echo -e "  projects                        List all projects with paths"
-                echo -e "  profile                         Profile management menu"
-                echo -e "  install <packages>              Install apt packages"
-                echo -e "  save [flags...]                 Save default flags (no args = clear saved flags)"
-                echo -e "  shell                           Open powerline shell in container"
-                echo -e "  allowlist                       Show/edit firewall allowlist"
-                echo -e "  info                            Show comprehensive project info"
-                echo -e "  clean                           Menu of cleanup tasks"
-                echo -e "  unlink                          Remove claudebox symlink"
-                echo -e "  rebuild                         Rebuild the Docker image from scratch${NC}"
-            else
-                cecho "ClaudeBox - Claude Code Docker Environment" "$CYAN"
-                echo
-                warn "First run setup required!"
-                echo "Run script without arguments first to build the Docker image."
-            fi
+        help)
+            show_help
             exit 0
             ;;
 
@@ -1440,7 +1481,7 @@ main() {
             project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
             IMAGE_NAME="claudebox-${project_folder_name}"
             PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/projects/$project_folder_name"
-            
+
             cecho "╔═══════════════════════════════════════════════════════════════════╗" "$CYAN"
             cecho "║                    ClaudeBox Information Panel                    ║" "$CYAN"
             cecho "╚═══════════════════════════════════════════════════════════════════╝" "$CYAN"
@@ -1487,7 +1528,7 @@ main() {
             if [[ -d ".claude/commands" ]]; then
                 project_cmd_count=$(ls -1 .claude/commands/*.md 2>/dev/null | wc -l)
             fi
-            
+
             if [[ $cmd_count -gt 0 ]] || [[ $project_cmd_count -gt 0 ]]; then
                 echo "   Global:  $cmd_count command(s)"
                 if [[ $cmd_count -gt 0 ]] && [[ -d "$HOME/.claudebox/commands" ]]; then
@@ -1518,34 +1559,30 @@ main() {
                 readarray -t current_profiles < <(read_profile_section "$current_profile_file" "profiles")
                 local current_packages=()
                 readarray -t current_packages < <(read_profile_section "$current_profile_file" "packages")
-                
+
                 if [[ ${#current_profiles[@]} -gt 0 ]]; then
                     echo -e "   Installed:  ${GREEN}${current_profiles[*]}${NC}"
                 else
                     echo -e "   Installed:  ${YELLOW}None${NC}"
                 fi
-                
+
                 if [[ ${#current_packages[@]} -gt 0 ]]; then
                     echo "   Packages:   ${current_packages[*]}"
                 fi
             else
                 echo -e "   Status:     ${YELLOW}No profiles installed${NC}"
             fi
-            
-            # Show available profiles
+
             echo -e "   Available:  ${CYAN}core${NC}, python, c, rust, go, javascript, java, ruby, php"
             echo -e "               database, devops, web, ml, security, embedded, networking"
             echo -e "   ${CYAN}Hint:${NC} Run 'claudebox profile' for profile help "
             echo
 
-            # Docker Status
             cecho "🐳 Docker Status" "$WHITE"
-            # Check if image exists
             if docker image inspect "$IMAGE_NAME" &>/dev/null; then
                 local image_info=$(docker images --filter "reference=$IMAGE_NAME" --format "{{.Size}}")
                 echo -e "   Image:      ${GREEN}Ready${NC} ($IMAGE_NAME - $image_info)"
-                
-                # Show image details
+
                 local image_created=$(docker inspect "$IMAGE_NAME" --format '{{.Created}}' | cut -d'T' -f1)
                 local layer_count=$(docker history "$IMAGE_NAME" --no-trunc --format "{{.CreatedBy}}" | wc -l)
                 echo "   Created:    $image_created"
@@ -1553,14 +1590,12 @@ main() {
             else
                 echo -e "   Image:      ${YELLOW}Not built${NC}"
             fi
-            
-            # Check for running containers
+
             local running_containers=$(docker ps --filter "ancestor=$IMAGE_NAME" -q 2>/dev/null)
             if [[ -n "$running_containers" ]]; then
                 local container_count=$(echo "$running_containers" | wc -l)
                 echo -e "   Containers: ${GREEN}$container_count running${NC}"
-                
-                # Show container stats if running
+
                 for container_id in $running_containers; do
                     local container_stats="$(docker stats --no-stream --format "{{.Container}}: {{.CPUPerc}} CPU, {{.MemUsage}}" "$container_id" 2>/dev/null || echo "")"
                     if [[ -n "$container_stats" ]]; then
@@ -1576,8 +1611,7 @@ main() {
             cecho "📊 All Projects Summary" "$WHITE"
             local total_projects=$(ls -1d "$HOME/.claudebox/projects"/*/ 2>/dev/null | wc -l)
             echo "   Projects:   $total_projects total"
-            
-            # Show all ClaudeBox images with sizes
+
             local total_size=$(docker images --filter "reference=claudebox-*" --format "{{.Size}}" | awk '{
                 size=$1; unit=$2;
                 if (unit == "GB") size = size * 1024;
@@ -1589,8 +1623,7 @@ main() {
             }')
             local image_count=$(docker images --filter "reference=claudebox-*" -q | wc -l)
             echo "   Images:     $image_count ClaudeBox images using $total_size"
-            
-            # Docker system stats
+
             local docker_stats=$(docker system df --format "table {{.Type}}\t{{.Total}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}" 2>/dev/null | tail -n +2)
             if [[ -n "$docker_stats" ]]; then
                 echo "   System:"
@@ -1600,26 +1633,48 @@ main() {
             fi
             echo
 
-            
             exit 0
             ;;
 
     esac
+    
+    # Check if Docker image is needed and exists (skip if rebuilding)
+    case "${1:-}" in
+        shell|update|config|mcp|migrate-installer)
+            # These commands need Docker image
+            if [[ "${CLAUDEBOX_NO_CACHE:-}" != "true" ]] && [[ ! -f /.dockerenv ]] && ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
+                error "ClaudeBox image not found.\nRun ${GREEN}claudebox${NC} first to build the image."
+            fi
+            ;;
+    esac
+    
+    # Now handle Docker-requiring commands
+    case "${1:-}" in
+        shell)
+            # Shell command was already handled above - this line makes case complete
+            # The implementation is already in place
+            ;;
+            
+        update|config|mcp|migrate-installer)
+            # These commands were already handled above - this line makes case complete
+            # The implementation is already in place
+            ;;
+            
+        *)
+            # Default case - continue to setup and run claude
+            ;;
+    esac
 
-    # Setup workspace and global config
     setup_project_folder
     setup_claude_agent_command
 
-    # Check if we need to rebuild based on profiles
     local need_rebuild=false
     local current_profiles=()
     local profile_hash=""
 
-    # Read profiles from current project's config.ini
     local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
     if [[ -f "$config_file" ]]; then
         readarray -t current_profiles < <(read_profile_section "$config_file" "profiles")
-        # Clean up profile names
         local cleaned_profiles=()
         for profile in "${current_profiles[@]}"; do
             profile=$(echo "$profile" | tr -d '[:space:]')
@@ -1627,15 +1682,14 @@ main() {
             cleaned_profiles+=("$profile")
         done
         current_profiles=("${cleaned_profiles[@]}")
-        
+
         if [[ ${#current_profiles[@]} -gt 0 ]]; then
             profile_hash=$(printf '%s\n' "${current_profiles[@]}" | sort | sha256sum | cut -d' ' -f1)
         fi
     fi
 
-    # Check if image exists and if profiles match
     if docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-        # Get the profile hash from the image labels
+
         local image_profile_hash
         image_profile_hash=$(docker inspect "$IMAGE_NAME" --format '{{index .Config.Labels "claudebox.profiles"}}' 2>/dev/null || echo "")
 
@@ -1649,7 +1703,6 @@ main() {
         need_rebuild=true
     fi
 
-        # Build image if needed
         if [[ "$need_rebuild" == "true" ]] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
                 logo
                 local build_context="$HOME/.claudebox/build"
@@ -1667,7 +1720,6 @@ ARG REBUILD_TIMESTAMP
 
 RUN echo '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/policy-rc.d
 
-# Install locales first to fix locale warnings
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
         apt-get install -y --no-autoremove --no-install-recommends ca-certificates curl locales gnupg && apt-get clean && \
@@ -1683,7 +1735,6 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
         procps vim nano less iputils-ping traceroute dnsutils netcat-openbsd net-tools xdg-utils && \
         rm -rf /var/lib/apt/lists/*
 
-# Set locale environment variables
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
@@ -1727,10 +1778,8 @@ RUN git config --global core.pager delta && \
     git config --global delta.light false && \
     git config --global delta.side-by-side true
 
-# Set DEVCONTAINER environment variable to help with orientation
 ENV DEVCONTAINER=true
 
-# Set the default shell to zsh rather than sh
 ENV SHELL=/bin/zsh
 
 ENV NVM_DIR="/home/$USERNAME/.nvm"
@@ -1754,10 +1803,8 @@ RUN bash -c "source $NVM_DIR/nvm.sh && \
     nvm use default && \
     npm install -g @anthropic-ai/claude-code"
 
-# Add terminal resize handler to zsh
 RUN cat >> ~/.zshrc <<'EOF'
 
-# Terminal resize handler
 if [[ -n "$PS1" ]] && command -v stty >/dev/null; then
   function _update_size {
     local rows cols
@@ -1769,38 +1816,21 @@ if [[ -n "$PS1" ]] && command -v stty >/dev/null; then
 fi
 EOF
 
-# Enable checkwinsize for bash
 RUN echo "shopt -s checkwinsize" >> ~/.bashrc
 
-# Configure tmux for proper resize handling
 RUN cat > ~/.tmux.conf <<'EOF'
-# Enable aggressive resize for proper window size handling
+
 set -g aggressive-resize on
 
-# Better terminal support
 set -g default-terminal "screen-256color"
 set -ga terminal-overrides ",xterm-256color:Tc"
 
-# Other useful tmux settings while we're at it
 set -g mouse on
 set -g history-limit 10000
 EOF
 
-# Configure screen for proper resize handling
-RUN cat > ~/.screenrc <<'EOF'
-# Enable dynamic window resizing
-defwritelock on
-altscreen on
-
-# Better defaults
-defscrollback 10000
-term screen-256color
-EOF
-
-# Install profile packages as separate layers for better caching
 USER root
 
-# Create system-wide winsize handler for bash/sh
 RUN cat > /etc/profile.d/00-winsize.sh <<'EOF'
 if [ -n "$PS1" ] && command -v stty >/dev/null 2>&1; then
   _update_size() {
@@ -1816,7 +1846,6 @@ DOCKERFILE
         if [[ ${#current_profiles[@]} -gt 0 ]]; then
                 info "Building with profiles: ${current_profiles[*]}"
 
-                # Resolve and deduplicate all dependency layers
                 resolved_profiles=()
                 for profile in "${current_profiles[@]}"; do
                         resolved_profiles+=($(expand_profile "$profile"))
@@ -1824,7 +1853,6 @@ DOCKERFILE
 
                 unique_profiles=($(awk -v RS=' ' '!seen[$1]++' <<< "${resolved_profiles[*]}"))
 
-                # APT install layers (1 per profile)
                 for profile in "${unique_profiles[@]}"; do
                         # Convert space-separated package string to array
                         local packages=$(get_profile_packages "$profile")
@@ -2091,21 +2119,15 @@ EOF
    fi
    
 
-   docker run -it --rm --init \
-       -w /workspace \
-       -v "$PROJECT_DIR":/workspace \
-       -v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude \
-       -v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json \
-       -v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config \
-       -v "$PROJECT_CLAUDEBOX_DIR/.cache":/home/$DOCKER_USER/.cache \
-       -v "$HOME/.ssh":"/home/$DOCKER_USER/.ssh:ro" \
-       -e "NODE_ENV=${NODE_ENV:-production}" \
-       -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
-       -e "CLAUDEBOX_PROJECT_NAME=$project_folder_name" \
-       -e "TERM=${TERM:-xterm-256color}" \
-       --cap-add NET_ADMIN \
-       --cap-add NET_RAW \
-       "$IMAGE_NAME" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
+   # Run with attached mode to show fillbar during startup
+   local temp_container="${IMAGE_NAME}-claude-$$"
+   run_claudebox_container "$temp_container" "attached" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
+   
+   # Cleanup with fillbar
+   fillbar
+   docker stop "$temp_container" >/dev/null 2>&1 || true
+   docker rm "$temp_container" >/dev/null 2>&1 || true
+   fillbar stop
 }
 
 main "$@"
