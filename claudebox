@@ -355,7 +355,11 @@ run_claudebox_container() {
     # Set run mode
     case "$run_mode" in
         "interactive")
-            docker_args+=("-it" "--rm" "--init")
+            # Only use -it if we have a TTY
+            if [ -t 0 ] && [ -t 1 ]; then
+                docker_args+=("-it")
+            fi
+            docker_args+=("--rm" "--init")
             ;;
         "detached")
             docker_args+=("-d")
@@ -392,6 +396,22 @@ run_claudebox_container() {
     fi
     
     docker run "${docker_args[@]}"
+}
+
+check_container_exists() {
+    local container_name="$1"
+    
+    # Check if container exists (running or stopped)
+    if docker ps -a --filter "name=^${container_name}$" --format "{{.Names}}" 2>/dev/null | grep -q "^${container_name}$"; then
+        # Check if it's running
+        if docker ps --filter "name=^${container_name}$" --format "{{.Names}}" 2>/dev/null | grep -q "^${container_name}$"; then
+            echo "running"
+        else
+            echo "stopped"
+        fi
+    else
+        echo "none"
+    fi
 }
 
 FILLBAR_PID=""
@@ -777,7 +797,13 @@ else
     echo "Warning: NVM not found at $NVM_DIR" >&2
 fi
 rm -f "$(realpath "$0")"
-exec claude "$@"
+
+# If no arguments and stdin is a terminal, run claude in interactive mode
+if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
+    exec claude
+else
+    exec claude "$@"
+fi
 EOF
 
     cat > "$build_context/docker-entrypoint.sh" << 'EOF'
@@ -1140,39 +1166,14 @@ main() {
             logo
             echo
             
-            # Use the same container as claude
-            local container_name="${IMAGE_NAME}"
-            
-            # Check if container exists (running or stopped)
-            if docker ps -a --filter "name=$container_name" --format "{{.Names}}" | grep -q "^${container_name}$"; then
-                # Container exists - check if it's running
-                if docker ps --filter "name=$container_name" --format "{{.Names}}" | grep -q "^${container_name}$"; then
-                    # Container is running - just exec into it
-                    if [[ "$persist_mode" == "true" ]]; then
-                        cecho "Administration Mode" "$YELLOW"
-                        echo "Any changes made here will be saved until there is a rebuild."
-                        echo
-                    fi
-                    docker exec -it "$container_name" su "$DOCKER_USER" -c "source /home/$DOCKER_USER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
-                else
-                    # Container exists but stopped - restart it
-                    if [[ "$persist_mode" == "true" ]]; then
-                        cecho "Administration Mode" "$YELLOW"
-                        echo "Any changes made here will be saved until there is a rebuild."
-                        echo
-                    fi
-                    docker start -ai "$container_name"
-                fi
-            else
-                # Container doesn't exist - create and run it
-                if [[ "$persist_mode" == "true" ]]; then
-                    cecho "Administration Mode" "$YELLOW"
-                    echo "Any changes made here will be saved until there is a rebuild."
-                    echo
-                fi
-                
-                run_claudebox_container "$container_name" "attached" --shell-mode "${shell_flags[@]}"
+            # Just run a new container for shell
+            if [[ "$persist_mode" == "true" ]]; then
+                cecho "Administration Mode" "$YELLOW"
+                echo "Sudo enabled, firewall disabled."
+                echo
             fi
+            
+            run_claudebox_container "" "interactive" --shell-mode "${shell_flags[@]}"
             
             # If admin mode, commit changes after exit
             if [[ "$persist_mode" == "true" ]]; then
@@ -2119,15 +2120,9 @@ EOF
    fi
    
 
-   # Run with attached mode to show fillbar during startup
-   local temp_container="${IMAGE_NAME}-claude-$$"
-   run_claudebox_container "$temp_container" "attached" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
-   
-   # Cleanup with fillbar
-   fillbar
-   docker stop "$temp_container" >/dev/null 2>&1 || true
-   docker rm "$temp_container" >/dev/null 2>&1 || true
-   fillbar stop
+   # For now, just run the container directly without persistence
+   # This approach is simpler and more reliable
+   run_claudebox_container "" "interactive" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
 }
 
 main "$@"
