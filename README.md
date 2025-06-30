@@ -411,6 +411,11 @@ Made with ❤️ for developers who love clean, reproducible environments
   - Better project listing with size/status display
   - Fixed JSON handling prevents auth loss
   - Smart -c flag filtering when no conversation exists
+  - Project claudebox folder mounted at `~/.claudebox` in container
+- **MCP Configuration Support**: Smart MCP settings file handling
+  - Automatically detects `.mcp.json` in project claudebox folder
+  - Merges with workspace `.mcp.json` if both exist
+  - Passes `--mcp-settings-file` to Claude CLI when appropriate
 - **Stability & Quality**: Comprehensive improvements
   - Applied ShellCheck fixes for better reliability
   - Fixed unbound variables (`XAUTHORITY`, `profile_file`, etc.)
