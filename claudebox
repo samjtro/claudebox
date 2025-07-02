@@ -796,7 +796,10 @@ if [[ -s "$NVM_DIR/nvm.sh" ]]; then
 else
     echo "Warning: NVM not found at $NVM_DIR" >&2
 fi
-rm -f "$(realpath "$0")"
+# Only remove wrapper in interactive mode (not when container will persist)
+if [[ -t 0 ]] && [[ -t 1 ]]; then
+    rm -f "$(realpath "$0")"
+fi
 
 # If no arguments and stdin is a terminal, run claude in interactive mode
 if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
@@ -947,13 +950,11 @@ main() {
 
     mkdir -p "$PROJECT_CLAUDEBOX_DIR"
 
-    # Check for help flags early
-    for arg in "$@"; do
-        if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
-            show_help
-            exit 0
-        fi
-    done
+    # Check for help flags early - only check first argument
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]]; then
+        show_help
+        exit 0
+    fi
 
     [[ "$VERBOSE" == "true" ]] && echo "Command: ${1:-none}" >&2
     
@@ -1135,6 +1136,11 @@ main() {
 
         shell)
             shift
+            # Check if image exists first
+            if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+                error "No Docker image found for this project folder: $PROJECT_DIR\nRun 'claudebox' first to build the image, or cd to your project directory."
+            fi
+            
             local persist_mode=false
             local shell_flags=()
             
@@ -1166,40 +1172,55 @@ main() {
             logo
             echo
             
-            # Just run a new container for shell
+            # Run container for shell
             if [[ "$persist_mode" == "true" ]]; then
                 cecho "Administration Mode" "$YELLOW"
                 echo "Sudo enabled, firewall disabled."
+                echo "Changes will be saved to the image when you exit."
                 echo
-            fi
-            
-            run_claudebox_container "" "interactive" --shell-mode "${shell_flags[@]}"
-            
-            # If admin mode, commit changes after exit
-            if [[ "$persist_mode" == "true" ]]; then
+                
+                # Create a named container for admin mode so we can commit it
+                local project_folder_name
+                project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+                local temp_container="claudebox-shell-${project_folder_name}-$$"
+                run_claudebox_container "$temp_container" "attached" --shell-mode "${shell_flags[@]}"
+                
+                # Commit changes back to image
                 fillbar
-                docker commit "$container_name" "$IMAGE_NAME" >/dev/null
+                docker commit "$temp_container" "$IMAGE_NAME" >/dev/null
+                docker rm -f "$temp_container" >/dev/null 2>&1
                 fillbar stop
                 success "Changes saved to image!"
+            else
+                # Regular shell mode - just run without committing
+                run_claudebox_container "" "interactive" --shell-mode "${shell_flags[@]}"
             fi
             
             exit 0
             ;;
 
         update|config|mcp|migrate-installer)
-            info "Running $1 command with persistence..."
-
+            # Check if image exists first
+            if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+                error "No Docker image found for this project folder: $PROJECT_DIR\nRun 'claudebox' first to build the image, or cd to your project directory."
+            fi
+            
             # Create temporary container
             local temp_container="claudebox-temp-${project_folder_name}-$$"
             
             # Run container with all arguments passed through
             run_claudebox_container "$temp_container" "detached" "$@" >/dev/null
             
-            # Show progress while waiting and cleaning up
+            # Show progress while waiting
             fillbar
             
             # Wait for container to finish
             docker wait "$temp_container" >/dev/null
+            
+            fillbar stop
+            
+            # Show container output for commands that produce output
+            docker logs "$temp_container" 2>&1
             
             # For update command, show version after update
             if [[ "$1" == "update" ]]; then
@@ -1213,9 +1234,6 @@ main() {
             docker stop "$temp_container" >/dev/null 2>&1 || true
             docker rm "$temp_container" >/dev/null 2>&1 || true
             
-            fillbar stop
-            
-            success "$1 completed and saved to image!"
             exit 0
             ;;
 
