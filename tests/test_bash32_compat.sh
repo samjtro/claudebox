@@ -41,7 +41,9 @@ run_test() {
 # Extract just the profile functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDEBOX_SCRIPT="$SCRIPT_DIR/../claudebox"
-PROFILE_FUNCS=$(sed -n '/^#--- Begin Profile Arrays/,/^#--- End Profile Arrays/p' "$CLAUDEBOX_SCRIPT")
+# Extract the profile functions - they start at get_profile_packages and end at profile_exists
+# Include the entire profile_exists function by searching for the next function after it
+PROFILE_FUNCS=$(sed -n '/^get_profile_packages()/,/^expand_profile()/p' "$CLAUDEBOX_SCRIPT" | sed '$d')
 
 echo "1. Testing profile functions"
 echo "----------------------------"
