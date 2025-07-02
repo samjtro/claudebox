@@ -796,6 +796,17 @@ if [[ -s "$NVM_DIR/nvm.sh" ]]; then
 else
     echo "Warning: NVM not found at $NVM_DIR" >&2
 fi
+
+# Handle update command specially
+if [[ "${1:-}" == "update" ]]; then
+    echo "Running update command..."
+    claude update
+    echo "Updating Claude code..."
+    # Run claude --version after update to ensure the update is complete
+    claude --version
+    exit 0
+fi
+
 # Only remove wrapper in interactive mode (not when container will persist)
 if [[ -t 0 ]] && [[ -t 1 ]]; then
     rm -f "$(realpath "$0")"
@@ -2138,9 +2149,26 @@ EOF
    fi
    
 
-   # For now, just run the container directly without persistence
-   # This approach is simpler and more reliable
-   run_claudebox_container "" "interactive" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
+   # Handle update command specially to persist changes
+   if [[ "${claude_flags[0]:-}" == "update" ]]; then
+       local project_folder_name
+       project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
+       local temp_container="claudebox-update-${project_folder_name}-$$"
+       
+       # Run update in a named container
+       run_claudebox_container "$temp_container" "attached" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
+       
+       # Commit changes back to image
+       fillbar
+       docker commit "$temp_container" "$IMAGE_NAME" >/dev/null
+       docker rm -f "$temp_container" >/dev/null 2>&1
+       fillbar stop
+       success "Claude updated and changes saved to image!"
+   else
+       # For now, just run the container directly without persistence
+       # This approach is simpler and more reliable
+       run_claudebox_container "" "interactive" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
+   fi
 }
 
 main "$@"
