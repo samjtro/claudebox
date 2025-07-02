@@ -647,37 +647,59 @@ path = $PROJECT_DIR
 [firewall]
 EOF
     fi
-    
-    # Copy commands from script directory to project's .claudebox folder
+}
+
+
+# Ensure shared commands folder exists and is up to date
+setup_shared_commands() {
+    local shared_commands="$HOME/.claudebox/commands"
     local script_dir="$(dirname "$SCRIPT_PATH")"
     local commands_source="$script_dir/commands"
-    local commands_dest="$PROJECT_CLAUDEBOX_DIR/commands"
     
-    # Only copy if source exists and destination doesn't (avoid overwriting user customizations)
-    if [[ -d "$commands_source" ]] && [[ ! -d "$commands_dest" ]]; then
-        mkdir -p "$commands_dest"
-        cp -r "$commands_source/"* "$commands_dest/" 2>/dev/null || true
+    # Create shared commands directory if it doesn't exist
+    mkdir -p "$shared_commands"
+    
+    # Copy/update commands from script directory if it exists
+    if [[ -d "$commands_source" ]]; then
+        # Copy new or updated files (preserve existing user files)
+        cp -n "$commands_source/"* "$shared_commands/" 2>/dev/null || true
+        
+        # For existing files, only update if source is newer
+        for file in "$commands_source"/*; do
+            if [[ -f "$file" ]]; then
+                local basename=$(basename "$file")
+                local dest_file="$shared_commands/$basename"
+                if [[ -f "$dest_file" ]] && [[ "$file" -nt "$dest_file" ]]; then
+                    cp "$file" "$dest_file"
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        info "Updated command: $basename"
+                    fi
+                fi
+            fi
+        done
+        
         if [[ "$VERBOSE" == "true" ]]; then
-            info "Initialized project commands from $commands_source"
+            info "Synchronized commands to shared folder: $shared_commands"
         fi
     fi
 }
 
-
 setup_claude_agent_command() {
-    # Copy commands from project's .claudebox folder to workspace .claude/commands
-    local commands_source="$PROJECT_CLAUDEBOX_DIR/commands"
+    # Create symlink from workspace .claude/commands to shared commands folder
+    local shared_commands="$HOME/.claudebox/commands"
     local commands_dest=".claude/commands"
     
-    # Create destination directory
-    mkdir -p "$commands_dest"
+    # Remove existing directory/symlink if it exists
+    [[ -e "$commands_dest" ]] && rm -rf "$commands_dest"
     
-    # Copy all files from the project's commands directory if it exists
-    if [[ -d "$commands_source" ]]; then
-        cp -r "$commands_source/"* "$commands_dest/" 2>/dev/null || true
-        if [[ "$VERBOSE" == "true" ]]; then
-            info "Copied command files from project storage to workspace"
-        fi
+    # Create parent directory
+    mkdir -p ".claude"
+    
+    # Create symlink to shared commands
+    ln -s "$shared_commands" "$commands_dest"
+    
+    if [[ "$VERBOSE" == "true" ]]; then
+        info "Linked commands from shared folder: $shared_commands"
     fi
 }
 create_build_files() {
@@ -839,12 +861,9 @@ if [ "$ENABLE_SUDO" = "true" ]; then
     chmod 0440 /etc/sudoers.d/DOCKERUSER
 fi
 
-if [ -n "$CLAUDEBOX_PROJECT_NAME" ] && [ -d "/home/DOCKERUSER/.claudebox/projects/${CLAUDEBOX_PROJECT_NAME}/commands" ]; then
-    mkdir -p /home/DOCKERUSER/.claude/commands
-    
-    # Copy commands from project's commands folder
-    cp -n "/home/DOCKERUSER/.claudebox/projects/${CLAUDEBOX_PROJECT_NAME}/commands/"* /home/DOCKERUSER/.claude/commands/ 2>/dev/null || true
-    
+# Commands are already available via symlink in mounted .claude folder
+# Just ensure proper ownership
+if [ -d /home/DOCKERUSER/.claude ]; then
     chown -R DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claude
 fi
 
@@ -1688,6 +1707,9 @@ main() {
             ;;
     esac
 
+    # Ensure shared commands folder is set up
+    setup_shared_commands
+    
     setup_project_folder
     setup_claude_agent_command
 
