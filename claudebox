@@ -806,10 +806,15 @@ fi
 # Handle update command specially
 if [[ "${1:-}" == "update" ]]; then
     echo "Running update command..."
-    claude update
-    echo "Updating Claude code..."
-    # Run claude --version after update to ensure the update is complete
-    claude --version
+    # Capture the output of claude update to check if already up to date
+    update_output=$(claude update 2>&1)
+    echo "$update_output"
+    
+    # Only run version check if an actual update occurred
+    if echo "$update_output" | grep -q "Successfully updated\|Installing update"; then
+        echo "Verifying update..."
+        claude --version
+    fi
     exit 0
 fi
 
@@ -2161,15 +2166,21 @@ EOF
        project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
        local temp_container="claudebox-update-${project_folder_name}-$$"
        
-       # Run update in a named container
-       run_claudebox_container "$temp_container" "attached" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"}
+       # Run update in a named container and capture output
+       local update_output
+       update_output=$(run_claudebox_container "$temp_container" "attached" ${control_flags[@]+"${control_flags[@]}"} ${claude_flags[@]+"${claude_flags[@]}"} 2>&1)
+       echo "$update_output"
        
-       # Commit changes back to image
-       fillbar
-       docker commit "$temp_container" "$IMAGE_NAME" >/dev/null
+       # Only commit if an actual update occurred
+       if echo "$update_output" | grep -q "Successfully updated\|Verifying update"; then
+           fillbar
+           docker commit "$temp_container" "$IMAGE_NAME" >/dev/null
+           fillbar stop
+           success "Claude updated and changes saved to image!"
+       fi
+       
+       # Always remove the container
        docker rm -f "$temp_container" >/dev/null 2>&1
-       fillbar stop
-       success "Claude updated and changes saved to image!"
    else
        # For now, just run the container directly without persistence
        # This approach is simpler and more reliable
