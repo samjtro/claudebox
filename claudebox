@@ -862,10 +862,7 @@ if [ "$ENABLE_SUDO" = "true" ]; then
 fi
 
 # Commands are already available via symlink in mounted .claude folder
-# Just ensure proper ownership
-if [ -d /home/DOCKERUSER/.claude ]; then
-    chown -R DOCKERUSER:DOCKERUSER /home/DOCKERUSER/.claude
-fi
+# No need to chown - Docker user has same UID/GID as host user
 
 if [ -n "$CLAUDEBOX_PROJECT_NAME" ]; then
     CONFIG_FILE="/home/DOCKERUSER/.claudebox/projects/${CLAUDEBOX_PROJECT_NAME}/config.ini"
