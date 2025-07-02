@@ -2048,7 +2048,6 @@ DOCKERFILE
        done < "$config_file"
        
        if [ "$firewall_empty" = "true" ]; then
-           info "Adding default firewall allowlist to project configuration..."
            # Append default domains to firewall section
            {
                # First, copy everything except the firewall section
@@ -2104,7 +2103,6 @@ github-releases.githubusercontent.com
 github-production-release-asset-2e65be.s3.amazonaws.com
 EOF
            } > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
-           success "Added default firewall allowlist"
        fi
    fi
 
