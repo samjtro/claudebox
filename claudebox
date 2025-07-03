@@ -2086,7 +2086,9 @@ DOCKERFILE
 USER $USERNAME
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
         echo 'source $HOME/.cargo/env' >> ~/.bashrc && \
-        echo 'source $HOME/.cargo/env' >> ~/.zshrc
+        echo 'source $HOME/.cargo/env' >> ~/.zshrc && \
+        echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc && \
+        echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
 USER root
 DOCKERFILE
                                                 ;;
