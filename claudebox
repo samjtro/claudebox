@@ -2067,8 +2067,9 @@ DOCKERFILE
                         # Convert space-separated package string to array
                         local packages=$(get_profile_packages "$profile")
                         IFS=' ' read -ra pkg_list <<< "$packages"
-                        [[ ${#pkg_list[@]} -eq 0 ]] && continue
-
+                        
+                        # Only add apt install section if there are packages
+                        if [[ ${#pkg_list[@]} -gt 0 ]]; then
         cat >> "$dockerfile" <<DOCKERFILE
 # $(get_profile_description "$profile")
 RUN export DEBIAN_FRONTEND=noninteractive && \\
@@ -2076,7 +2077,10 @@ RUN export DEBIAN_FRONTEND=noninteractive && \\
         apt-get install -y --no-autoremove ${pkg_list[*]} && \\
         apt-get clean && rm -rf /var/lib/apt/lists/*
 DOCKERFILE
-                                case "$profile" in
+                        fi
+                        
+                        # Always check for special installation steps
+                        case "$profile" in
                                         rust)
                                                 cat >> "$dockerfile" <<'DOCKERFILE'
 USER $USERNAME
