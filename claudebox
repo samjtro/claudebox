@@ -359,7 +359,13 @@ run_claudebox_container() {
             if [ -t 0 ] && [ -t 1 ]; then
                 docker_args+=("-it")
             fi
-            docker_args+=("--rm" "--init")
+            # Only add --rm if no container name (for persistence)
+            if [[ -z "$container_name" ]]; then
+                docker_args+=("--rm")
+            else
+                docker_args+=("--name" "$container_name")
+            fi
+            docker_args+=("--init")
             ;;
         "detached")
             docker_args+=("-d")
@@ -643,8 +649,6 @@ path = $PROJECT_DIR
 [profiles]
 
 [packages]
-
-[firewall]
 EOF
     fi
 }
@@ -685,21 +689,21 @@ setup_shared_commands() {
 }
 
 setup_claude_agent_command() {
-    # Create symlink from workspace .claude/commands to shared commands folder
+    # Create commands symlink in project's .claude folder (mounts to ~/.claude in container)
     local shared_commands="$HOME/.claudebox/commands"
-    local commands_dest=".claude/commands"
+    local commands_dest="$PROJECT_CLAUDEBOX_DIR/.claude/commands"
     
-    # Remove existing directory/symlink if it exists
-    [[ -e "$commands_dest" ]] && rm -rf "$commands_dest"
-    
-    # Create parent directory
-    mkdir -p ".claude"
-    
-    # Create symlink to shared commands
-    ln -s "$shared_commands" "$commands_dest"
-    
-    if [[ "$VERBOSE" == "true" ]]; then
-        info "Linked commands from shared folder: $shared_commands"
+    # Only create symlink if commands destination doesn't already exist
+    if [[ ! -e "$commands_dest" ]]; then
+        # Ensure parent directory exists
+        mkdir -p "$PROJECT_CLAUDEBOX_DIR/.claude"
+        
+        # Create symlink to shared commands
+        ln -s "$shared_commands" "$commands_dest"
+        
+        if [[ "$VERBOSE" == "true" ]]; then
+            info "Linked shared commands to project"
+        fi
     fi
 }
 create_build_files() {
@@ -728,25 +732,15 @@ iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 DEFAULT_DOMAINS="api.anthropic.com console.anthropic.com statsig.anthropic.com sentry.io"
 
 ALLOWED_DOMAINS="$DEFAULT_DOMAINS"
-CONFIG_FILE="/home/DOCKERUSER/.claudebox/projects/$CLAUDEBOX_PROJECT_NAME/config.ini"
-if [ -f "$CONFIG_FILE" ]; then
-    in_firewall=0
+ALLOWLIST_FILE="/home/DOCKERUSER/.claudebox/projects/${CLAUDEBOX_PROJECT_NAME:-}/allowlist"
+if [ -f "$ALLOWLIST_FILE" ]; then
     while IFS= read -r line; do
-        if [[ "$line" == "[firewall]" ]]; then
-            in_firewall=1
-            continue
-        fi
-        if [[ "$line" =~ ^\[.*\]$ ]] && [ $in_firewall -eq 1 ]; then
-            break
-        fi
-        if [ $in_firewall -eq 1 ]; then
-            [[ "$line" =~ ^#.* ]] && continue
-            [[ -z "$line" ]] && continue
-            domain="${line#\*.}"
-            domain="$(echo "$domain" | xargs)"
-            [[ -n "$domain" ]] && ALLOWED_DOMAINS="$ALLOWED_DOMAINS $domain"
-        fi
-    done < "$CONFIG_FILE"
+        [[ "$line" =~ ^#.* ]] && continue
+        [[ -z "$line" ]] && continue
+        domain="${line#\*.}"
+        domain="$(echo "$domain" | xargs)"
+        [[ -n "$domain" ]] && ALLOWED_DOMAINS="$ALLOWED_DOMAINS $domain"
+    done < "$ALLOWLIST_FILE"
 fi
 
 if command -v ipset >/dev/null 2>&1; then
@@ -785,55 +779,6 @@ echo "Firewall initialized with Anthropic-only access"
 rm -f "$(realpath "$0")"
 EOF
 
-    cat > "$build_context/claude-wrapper" << 'EOF'
-#!/bin/bash
-set -euo pipefail
-
-export NVM_DIR="$HOME/.nvm"
-
-if [[ -s "$NVM_DIR/nvm.sh" ]]; then
-    \. "$NVM_DIR/nvm.sh"
-    nvm use default >/dev/null 2>&1 || {
-        echo "Warning: Failed to activate default Node version" >&2
-    }
-else
-    echo "Warning: NVM not found at $NVM_DIR" >&2
-fi
-
-# Check if we should persist (update command or non-interactive)
-SHOULD_PERSIST=false
-if [[ "${1:-}" == "update" ]] || [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
-    SHOULD_PERSIST=true
-fi
-
-# Handle update command specially
-if [[ "${1:-}" == "update" ]]; then
-    echo "Running update command..."
-    # Capture the output of claude update to check if already up to date
-    update_output=$(claude update 2>&1)
-    echo "$update_output"
-    
-    # Only run version check if an actual update occurred
-    if echo "$update_output" | grep -q "Successfully updated\|Installing update"; then
-        echo "Verifying update..."
-        claude --version
-    fi
-    exit 0
-fi
-
-# Only remove wrapper in truly interactive mode (not when container will persist)
-if [[ "$SHOULD_PERSIST" == "false" ]]; then
-    rm -f "$(realpath "$0")"
-fi
-
-# If no arguments and stdin is a terminal, run claude in interactive mode
-if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
-    exec claude
-else
-    exec claude "$@"
-fi
-EOF
-
     cat > "$build_context/docker-entrypoint.sh" << 'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -856,9 +801,11 @@ if [ -f ~/init-firewall ]; then
     ~/init-firewall || true
 fi
 
-if [ "$ENABLE_SUDO" = "true" ]; then
-    echo "DOCKERUSER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/DOCKERUSER
-    chmod 0440 /etc/sudoers.d/DOCKERUSER
+# Handle sudo access based on --enable-sudo flag
+# Note: claude user already has sudoers entry from Dockerfile
+if [ "$ENABLE_SUDO" != "true" ]; then
+    # Remove sudo access if --enable-sudo wasn't passed
+    rm -f /etc/sudoers.d/claude
 fi
 
 if [ -n "$CLAUDEBOX_PROJECT_NAME" ]; then
@@ -885,15 +832,69 @@ fi
 cd /home/DOCKERUSER
 
 if [[ "${SHELL_MODE:-false}" == "true" ]]; then
-    rm -f /home/DOCKERUSER/claude-wrapper
-    exec su DOCKERUSER -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
+    # Use runuser to avoid PTY signal handling issues
+    exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec /bin/zsh"
 else
-    cmd="cd /workspace && ~/claude-wrapper"
-    for arg in "$@"; do
-        escaped_arg=$(echo "$arg" | sed "s/'/'\\\\''/g")
-        cmd="$cmd '$escaped_arg'"
-    done
-    exec su DOCKERUSER -c "$cmd"
+    # Claude mode - handle wrapper logic directly here
+    if [[ "${1:-}" == "update" ]]; then
+        # Special update handling - pass all arguments
+        shift  # Remove "update" from arguments
+        exec runuser -u DOCKERUSER -- bash -c '
+            export NVM_DIR="$HOME/.nvm"
+            if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+                \. "$NVM_DIR/nvm.sh"
+                nvm use default >/dev/null 2>&1 || {
+                    echo "Warning: Failed to activate default Node version" >&2
+                }
+            else
+                echo "Warning: NVM not found at $NVM_DIR" >&2
+            fi
+            
+            cd /workspace
+            echo "Running update command..."
+            
+            # Check for stale update lock (older than 5 minutes)
+            lock_file="$HOME/.claude/.update.lock"
+            if [[ -f "$lock_file" ]]; then
+                lock_age=$(( $(date +%s) - $(stat -f %m "$lock_file" 2>/dev/null || stat -c %Y "$lock_file" 2>/dev/null || echo 0) ))
+                if [[ $lock_age -gt 300 ]]; then
+                    rm -f "$lock_file"
+                fi
+            fi
+            
+            # Capture the output of claude update to check if already up to date
+            update_output=$(claude update 2>&1)
+            echo "$update_output"
+            
+            # Only run version check if an actual update occurred
+            if echo "$update_output" | grep -q "Successfully updated\|Installing update"; then
+                echo "Verifying update..."
+                claude --version
+            fi
+        '
+    else
+        # Regular claude execution
+        exec runuser -u DOCKERUSER -- bash -c '
+            export NVM_DIR="$HOME/.nvm"
+            if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+                \. "$NVM_DIR/nvm.sh"
+                nvm use default >/dev/null 2>&1 || {
+                    echo "Warning: Failed to activate default Node version" >&2
+                }
+            else
+                echo "Warning: NVM not found at $NVM_DIR" >&2
+            fi
+            
+            cd /workspace
+            
+            # If no arguments and stdin is a terminal, run claude in interactive mode
+            if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
+                exec claude
+            else
+                exec claude "$@"
+            fi
+        ' -- "$@"
+    fi
 fi
 EOF
 }
@@ -1200,7 +1201,15 @@ main() {
                 local project_folder_name
                 project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
                 local temp_container="claudebox-shell-${project_folder_name}-$$"
-                run_claudebox_container "$temp_container" "attached" --shell-mode "${shell_flags[@]}"
+                
+                # Ensure cleanup runs on any exit (including Ctrl-C)
+                cleanup_admin() {
+                    docker commit "$temp_container" "$IMAGE_NAME" >/dev/null 2>&1
+                    docker rm -f "$temp_container" >/dev/null 2>&1
+                }
+                trap cleanup_admin EXIT
+                
+                run_claudebox_container "$temp_container" "interactive" --shell-mode "${shell_flags[@]}"
                 
                 # Commit changes back to image
                 fillbar
@@ -1216,9 +1225,105 @@ main() {
             exit 0
             ;;
 
-        update|config|mcp|migrate-installer)
+        update)
+            # Handle update all specially
+            if [[ "${2:-}" == "all" ]]; then
+                info "Updating all components..."
+                echo
+                
+                # Update claudebox script
+                info "Updating claudebox script..."
+                if command -v curl >/dev/null 2>&1; then
+                    curl -fsSL https://raw.githubusercontent.com/RchGrav/claudebox/main/claudebox -o /tmp/claudebox.new
+                elif command -v wget >/dev/null 2>&1; then
+                    wget -qO /tmp/claudebox.new https://raw.githubusercontent.com/RchGrav/claudebox/main/claudebox
+                else
+                    error "Neither curl nor wget found"
+                fi
+                
+                if [[ -f /tmp/claudebox.new ]]; then
+                    # Find the installed claudebox (not the source)
+                    local installed_path=$(which claudebox 2>/dev/null || echo "/usr/local/bin/claudebox")
+                    
+                    # If it's a symlink, replace it with the actual file first
+                    if [[ -L "$installed_path" ]]; then
+                        info "Converting symlink to real file..."
+                        local source_file=$(readlink -f "$installed_path")
+                        if [[ -w "$(dirname "$installed_path")" ]]; then
+                            cp "$source_file" "$installed_path.tmp"
+                            mv "$installed_path.tmp" "$installed_path"
+                            chmod +x "$installed_path"
+                        else
+                            sudo cp "$source_file" "$installed_path.tmp"
+                            sudo mv "$installed_path.tmp" "$installed_path"
+                            sudo chmod +x "$installed_path"
+                        fi
+                    fi
+                    
+                    # Compare hashes of the INSTALLED file
+                    current_hash=$(sha256sum "$installed_path" 2>/dev/null | cut -d" " -f1 || echo "none")
+                    new_hash=$(sha256sum /tmp/claudebox.new | cut -d" " -f1)
+                    
+                    if [[ "$current_hash" != "$new_hash" ]]; then
+                        info "New version available, updating..."
+                        
+                        # Backup current installed version
+                        local backups_dir="$HOME/.claudebox/backups"
+                        mkdir -p "$backups_dir"
+                        local timestamp=$(date +%s)
+                        cp "$installed_path" "$backups_dir/$timestamp"
+                        info "Backed up current version to $backups_dir/$timestamp"
+                        
+                        # Update the INSTALLED file
+                        if [[ -w "$installed_path" ]] || [[ -w "$(dirname "$installed_path")" ]]; then
+                            cp /tmp/claudebox.new "$installed_path"
+                            chmod +x "$installed_path"
+                        else
+                            sudo cp /tmp/claudebox.new "$installed_path"
+                            sudo chmod +x "$installed_path"
+                        fi
+                        success "✓ Claudebox script updated at $installed_path"
+                    else
+                        success "✓ Claudebox script already up to date"
+                    fi
+                    rm -f /tmp/claudebox.new
+                fi
+                echo
+                
+                # Update commands
+                info "Updating commands..."
+                local commands_dir="$HOME/.claudebox/commands"
+                mkdir -p "$commands_dir"
+                
+                for cmd in taskengine devops; do
+                    echo -n "  Updating $cmd.md... "
+                    if command -v curl >/dev/null 2>&1; then
+                        curl -fsSL "https://raw.githubusercontent.com/RchGrav/claudebox/main/commands/$cmd.md" -o "$commands_dir/$cmd.md"
+                    else
+                        wget -qO "$commands_dir/$cmd.md" "https://raw.githubusercontent.com/RchGrav/claudebox/main/commands/$cmd.md"
+                    fi
+                    echo "✓"
+                done
+                echo
+                
+                # Now update Claude
+                info "Updating Claude..."
+                shift # Remove "update"
+                shift # Remove "all"
+                set -- "update" "$@" # Put back just "update"
+            fi
+            
             # Check if image exists first
             if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+                error "No Docker image found for this project folder: $PROJECT_DIR\nRun 'claudebox' first to build the image, or cd to your project directory."
+            fi
+            
+            # Continue with normal update flow
+            ;&  # Fall through to next case
+            
+        config|mcp|migrate-installer)
+            # Check if image exists first (for non-update commands)
+            if [[ "$1" != "update" ]] && ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
                 error "No Docker image found for this project folder: $PROJECT_DIR\nRun 'claudebox' first to build the image, or cd to your project directory."
             fi
             
@@ -1229,6 +1334,13 @@ main() {
             run_claudebox_container "$temp_container" "detached" "$@" >/dev/null
             
             # Show progress while waiting
+            if [[ "$1" == "update" ]]; then
+                # Show hint during update
+                echo
+                cecho "Hint:" "$YELLOW"
+                echo "  claudebox update all            # Pull the latest claudebox features!"
+                echo
+            fi
             fillbar
             
             # Wait for container to finish
@@ -1256,40 +1368,29 @@ main() {
 
         allowlist)
             shift
-            local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
+            local allowlist_file="$PROJECT_CLAUDEBOX_DIR/allowlist"
 
             cecho "🔒 ClaudeBox Firewall Allowlist" "$CYAN"
             echo
             cecho "Current Project: $PROJECT_DIR" "$WHITE"
             echo
 
-            if [[ -f "$config_file" ]]; then
-                cecho "Project Configuration:" "$GREEN"
-                echo "  $config_file"
+            if [[ -f "$allowlist_file" ]]; then
+                cecho "Allowlist file:" "$GREEN"
+                echo "  $allowlist_file"
                 echo
-                cecho "Firewall Allowlist:" "$CYAN"
-                # Display only firewall section
-                local in_firewall=0
+                cecho "Allowed domains:" "$CYAN"
+                # Display allowlist contents
                 while IFS= read -r line; do
-                    if [[ "$line" == "[firewall]" ]]; then
-                        in_firewall=1
-                        continue
-                    fi
-                    if [[ "$line" =~ ^\[.*\]$ ]] && [ $in_firewall -eq 1 ]; then
-                        break
-                    fi
-                    if [ $in_firewall -eq 1 ] && [[ -n "$line" ]]; then
+                    if [[ -n "$line" ]] && [[ ! "$line" =~ ^#.* ]]; then
                         echo "  $line"
                     fi
-                done < "$config_file"
-
-                if [ $in_firewall -eq 0 ]; then
-                    echo "  (empty)"
-                fi
+                done < "$allowlist_file"
+                echo
             else
-                cecho "Project Configuration:" "$YELLOW"
+                cecho "Allowlist file:" "$YELLOW"
                 echo "  Not yet created (will be created on first run)"
-                echo "  Location: $config_file"
+                echo "  Location: $allowlist_file"
             fi
 
             echo
@@ -1297,8 +1398,7 @@ main() {
             echo "  api.anthropic.com, console.anthropic.com, statsig.anthropic.com, sentry.io"
             echo
             cecho "To edit allowlist:" "$YELLOW"
-            echo "  \$EDITOR $config_file"
-            echo "  (Edit the [firewall] section)"
+            echo "  \$EDITOR $allowlist_file"
             echo
             cecho "Note:" "$WHITE"
             echo "  Changes take effect on next container start"
@@ -1310,7 +1410,7 @@ main() {
         clean)
             shift
             case "${1:-}" in
-                --all|-a)
+                all)
                     warn "Complete Docker cleanup: removing all claudebox containers, images, volumes, and cache..."
                     # Remove all claudebox containers
                     docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
@@ -1331,7 +1431,7 @@ main() {
 
                     success "Docker cleanup complete!"
                     ;;
-                --image|-i)
+                image)
                     warn "Removing ClaudeBox containers and image..."
                     # Remove any containers from this image
                     docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
@@ -1347,18 +1447,18 @@ main() {
                     docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
                     success "Containers and image removed! Build cache preserved."
                     ;;
-                --cache)
+                cache)
                     warn "Cleaning Docker build cache..."
                     docker builder prune -af
                     success "Build cache cleaned!"
                     ;;
-                --volumes|-v)
+                volumes)
                     warn "Removing ClaudeBox-related volumes..."
                     docker volume ls -q --filter "name=claudebox" | xargs -r docker volume rm 2>/dev/null || true
                     docker volume prune -f 2>/dev/null || true
                     success "Volumes cleaned!"
                     ;;
-                --containers)
+                containers)
                     warn "Cleaning ClaudeBox containers..."
                     # Remove any containers from this image
                     docker ps -a --filter "label=claudebox.project" -q | xargs -r docker rm -f 2>/dev/null || true
@@ -1371,20 +1471,20 @@ main() {
                     done
                     success "Containers cleaned!"
                     ;;
-                --dangling|-d)
+                dangling)
                     warn "Removing dangling images and unused containers..."
                     docker image prune -f
                     docker container prune -f
                     success "Dangling resources cleaned!"
                     ;;
-                --logs|-l)
+                logs)
                     warn "Clearing Docker container logs..."
                     docker ps -a --filter "label=claudebox.project" -q | while read -r container; do
                         docker logs "$container" >/dev/null 2>&1 && echo -n | docker logs "$container" 2>/dev/null || true
                     done
                     success "Container logs cleared!"
                     ;;
-                --project|-p)
+                project)
                     shift
 
                     local target_path="$PROJECT_DIR"
@@ -1460,14 +1560,14 @@ main() {
                         *)
                             cecho "ClaudeBox Project Clean Options:" "$CYAN"
                             echo
-                            echo -e "  ${GREEN}clean --project [path] profiles${NC} Remove installed profiles & packages"
-                            echo -e "  ${GREEN}clean --project [path] data${NC}     Remove project data (auth, history, configs)"
-                            echo -e "  ${GREEN}clean --project [path] docker${NC}   Remove project Docker image"
-                            echo -e "  ${GREEN}clean --project [path] all${NC}      Remove everything for this project"
+                            echo -e "  ${GREEN}clean project [path] profiles${NC}   Remove installed profiles & packages"
+                            echo -e "  ${GREEN}clean project [path] data${NC}       Remove project data (auth, history, configs)"
+                            echo -e "  ${GREEN}clean project [path] docker${NC}     Remove project Docker image"
+                            echo -e "  ${GREEN}clean project [path] all${NC}        Remove everything for this project"
                             echo
                             cecho "Usage examples:" "$WHITE"
-                            echo "  claudebox clean --project data                    # Current directory"
-                            echo "  claudebox clean --project /path/to/project all    # Specific path"
+                            echo "  claudebox clean project data                      # Current directory"
+                            echo "  claudebox clean project /path/to/project all      # Specific path"
                             echo
                             cecho "Current project: $PROJECT_DIR" "$YELLOW"
                             echo
@@ -1483,25 +1583,74 @@ main() {
                 *)
                     cecho "ClaudeBox Clean Options:" "$CYAN"
                     echo
-                    echo -e "  ${GREEN}clean --containers${NC}       Remove all containers (preserves image)"
-                    echo -e "  ${GREEN}clean --project${NC}          Show project cleanup options"
-                    echo -e "  ${GREEN}clean --all${NC}              Remove all Docker artifacts (containers, images, cache, volumes)"
-                    echo -e "  ${GREEN}clean --image${NC}            Remove containers and image (preserves build cache)"
-                    echo -e "  ${GREEN}clean --cache${NC}            Remove Docker build cache only"
-                    echo -e "  ${GREEN}clean --volumes${NC}          Remove associated Docker volumes"
-                    echo -e "  ${GREEN}clean --dangling${NC}         Remove dangling images and unused containers"
-                    echo -e "  ${GREEN}clean --logs${NC}             Clear Docker container logs"
+                    echo -e "  ${GREEN}clean containers${NC}         Remove all containers (preserves image)"
+                    echo -e "  ${GREEN}clean project${NC}            Show project cleanup options"
+                    echo -e "  ${GREEN}clean all${NC}                Remove all Docker artifacts (containers, images, cache, volumes)"
+                    echo -e "  ${GREEN}clean image${NC}              Remove containers and image (preserves build cache)"
+                    echo -e "  ${GREEN}clean cache${NC}              Remove Docker build cache only"
+                    echo -e "  ${GREEN}clean volumes${NC}            Remove associated Docker volumes"
+                    echo -e "  ${GREEN}clean dangling${NC}           Remove dangling images and unused containers"
+                    echo -e "  ${GREEN}clean logs${NC}               Clear Docker container logs"
                     echo
                     cecho "Examples:" "$YELLOW"
-                    echo "  claudebox clean --containers # Remove all containers"
-                    echo "  claudebox clean --project    # Show project cleanup menu"
-                    echo "  claudebox clean --image      # Remove containers and image"
-                    echo "  claudebox clean --all        # Complete Docker cleanup"
+                    echo "  claudebox clean containers  # Remove all containers"
+                    echo "  claudebox clean project     # Show project cleanup menu"
+                    echo "  claudebox clean image       # Remove containers and image"
+                    echo "  claudebox clean all         # Complete Docker cleanup"
                     exit 0
                     ;;
             esac
             echo
             docker system df
+            exit 0
+            ;;
+
+
+        undo)
+            local backups_dir="$HOME/.claudebox/backups"
+            if [[ ! -d "$backups_dir" ]] || [[ -z "$(ls -A "$backups_dir" 2>/dev/null)" ]]; then
+                error "No backups found"
+            fi
+            
+            # Get oldest backup (smallest timestamp)
+            local oldest=$(ls -1 "$backups_dir" | sort -n | head -1)
+            local installed_path=$(which claudebox 2>/dev/null || echo "/usr/local/bin/claudebox")
+            
+            info "Restoring oldest backup from $(date -d @$oldest '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r $oldest '+%Y-%m-%d %H:%M:%S')"
+            
+            if [[ -w "$installed_path" ]] || [[ -w "$(dirname "$installed_path")" ]]; then
+                cp "$backups_dir/$oldest" "$installed_path"
+                chmod +x "$installed_path"
+            else
+                sudo cp "$backups_dir/$oldest" "$installed_path"
+                sudo chmod +x "$installed_path"
+            fi
+            
+            success "✓ Restored claudebox from backup"
+            exit 0
+            ;;
+            
+        redo)
+            local backups_dir="$HOME/.claudebox/backups"
+            if [[ ! -d "$backups_dir" ]] || [[ -z "$(ls -A "$backups_dir" 2>/dev/null)" ]]; then
+                error "No backups found"
+            fi
+            
+            # Get newest backup (largest timestamp)
+            local newest=$(ls -1 "$backups_dir" | sort -n | tail -1)
+            local installed_path=$(which claudebox 2>/dev/null || echo "/usr/local/bin/claudebox")
+            
+            info "Restoring newest backup from $(date -d @$newest '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r $newest '+%Y-%m-%d %H:%M:%S')"
+            
+            if [[ -w "$installed_path" ]] || [[ -w "$(dirname "$installed_path")" ]]; then
+                cp "$backups_dir/$newest" "$installed_path"
+                chmod +x "$installed_path"
+            else
+                sudo cp "$backups_dir/$newest" "$installed_path"
+                sudo chmod +x "$installed_path"
+            fi
+            
+            success "✓ Restored claudebox from backup"
             exit 0
             ;;
 
@@ -1727,14 +1876,32 @@ main() {
         fi
     fi
 
+    # Calculate hash of the script itself
+    local script_hash=$(sha256sum "$SCRIPT_PATH" | cut -d' ' -f1)
+    local build_hash="${script_hash}-${profile_hash}"
+    
+    # Check if build files have changed
+    local last_build_hash_file="$HOME/.claudebox/.last_build_hash"
+    if [[ -f "$last_build_hash_file" ]]; then
+        local last_build_hash=$(cat "$last_build_hash_file")
+        if [[ "$build_hash" != "$last_build_hash" ]]; then
+            docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
+            need_rebuild=true
+        fi
+    else
+        # No hash file means first run or deleted, trigger rebuild
+        need_rebuild=true
+    fi
+
     if docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
 
         local image_profile_hash
         image_profile_hash=$(docker inspect "$IMAGE_NAME" --format '{{index .Config.Labels "claudebox.profiles"}}' 2>/dev/null || echo "")
 
         if [[ "$profile_hash" != "$image_profile_hash" ]]; then
-            warn "Profiles have changed. Rebuilding image..."
-            warn "Current profiles: ${current_profiles[*]}"
+            if [[ ${#current_profiles[@]} -gt 0 ]]; then
+                info "Building with profiles: ${current_profiles[*]}"
+            fi
             docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
             need_rebuild=true
         fi
@@ -1870,6 +2037,10 @@ EOF
 
 USER root
 
+# Add sudoers entry for claude user (following Anthropic's model)
+RUN echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude && \
+    chmod 0440 /etc/sudoers.d/claude
+
 RUN cat > /etc/profile.d/00-winsize.sh <<'EOF'
 if [ -n "$PS1" ] && command -v stty >/dev/null 2>&1; then
   _update_size() {
@@ -1964,10 +2135,9 @@ DOCKERFILE
         echo "" >> "$dockerfile"
         cat >> "$dockerfile" <<'DOCKERFILE'
 
-# Copy internal scripts to home directory
-COPY --chmod=755 claude-wrapper /home/$USERNAME/claude-wrapper
+# Copy init-firewall script
 COPY --chmod=755 init-firewall /home/$USERNAME/init-firewall
-RUN chown $USERNAME:$USERNAME /home/$USERNAME/claude-wrapper /home/$USERNAME/init-firewall
+RUN chown $USERNAME:$USERNAME /home/$USERNAME/init-firewall
 
 USER $USERNAME
 RUN bash -c "source $NVM_DIR/nvm.sh && claude --version"
@@ -1984,8 +2154,9 @@ DOCKERFILE
 
         run_docker_build "$dockerfile" "$build_context"
 
-        echo -e "\n${GREEN}Complete!${NC}\n"
-        success "Docker image '$IMAGE_NAME' built!"
+        # Save build hash for next run
+        mkdir -p "$HOME/.claudebox"
+        echo "$build_hash" > "$last_build_hash_file"
 
         echo
         cecho "ClaudeBox Setup Complete!" "$CYAN"
@@ -2026,37 +2197,12 @@ DOCKERFILE
        sudo chown -R "$USER:$USER" "$HOME/.claudebox" || true
    fi
 
-   # Create default firewall domains in config.ini if empty
-   local config_file="$PROJECT_CLAUDEBOX_DIR/config.ini"
+   # Create default allowlist file if it doesn't exist
+   local allowlist_file="$PROJECT_CLAUDEBOX_DIR/allowlist"
    
-   if [[ -f "$config_file" ]]; then
-       # Check if firewall section is empty or missing domains
-       local firewall_empty=true
-       local in_firewall=0
-       while IFS= read -r line; do
-           if [[ "$line" == "[firewall]" ]]; then
-               in_firewall=1
-               continue
-           fi
-           if [[ "$line" =~ ^\[.*\]$ ]] && [ $in_firewall -eq 1 ]; then
-               break
-           fi
-           if [ $in_firewall -eq 1 ] && [[ -n "$line" ]] && [[ ! "$line" =~ ^#.* ]]; then
-               firewall_empty=false
-               break
-           fi
-       done < "$config_file"
-       
-       if [ "$firewall_empty" = "true" ]; then
-           # Append default domains to firewall section
-           {
-               # First, copy everything except the firewall section
-               awk '/^\[firewall\]/ { firewall=1; print; next } 
-                    /^\[/ && firewall { firewall=0 } 
-                    !firewall { print }' "$config_file"
-               
-               # Add default domains
-               cat <<'EOF'
+   if [[ ! -f "$allowlist_file" ]]; then
+       # Create allowlist with default domains
+       cat > "$allowlist_file" <<'EOF'
 # Default domains (always allowed):
 # api.anthropic.com, console.anthropic.com, statsig.anthropic.com, sentry.io
 
@@ -2102,8 +2248,6 @@ github-cloud.s3.amazonaws.com
 github-releases.githubusercontent.com
 github-production-release-asset-2e65be.s3.amazonaws.com
 EOF
-           } > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
-       fi
    fi
 
    set -- "${DEFAULT_FLAGS[@]}" "$@"
