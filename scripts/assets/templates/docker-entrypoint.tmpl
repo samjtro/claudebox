@@ -58,8 +58,10 @@ cd /home/DOCKERUSER
 if [[ "${SHELL_MODE:-false}" == "true" ]]; then
     # Use runuser to avoid PTY signal handling issues
     if [[ "${CLAUDEBOX_WRAP_TMUX:-false}" == "true" ]]; then
-        exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec tmux new-session /bin/zsh"
+        # For tmux, we need to show logo inside tmux, not before
+        exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec tmux new-session 'source /home/DOCKERUSER/.claudebox/scripts/lib/common.sh 2>/dev/null && logo_header 2>/dev/null; exec /bin/zsh'"
     else
+        # For non-tmux, show logo before starting shell
         exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && source /home/DOCKERUSER/.claudebox/scripts/lib/common.sh 2>/dev/null && logo_header 2>/dev/null; exec /bin/zsh"
     fi
 else
