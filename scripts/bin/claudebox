@@ -118,6 +118,7 @@ main() {
     # If rebuild was the only argument, default to shell
     if [[ "$found_rebuild" == "true" ]] && [[ $# -eq 0 ]]; then
         set -- "shell"
+        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Rebuild with no other args, defaulting to shell command" >&2
     fi
     
     if [[ "$found_rebuild" == "true" ]]; then
@@ -420,6 +421,8 @@ LABEL claudebox.project=\"$project_folder_name\""
             fi
             ;;
     esac
+    
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] After build/check section. Continuing with args: $*" >&2
 
     # Ensure .claudebox exists with proper permissions
     if [[ ! -d "$HOME/.claudebox" ]]; then
@@ -517,6 +520,7 @@ LABEL claudebox.project=\"$project_folder_name\""
         docker rm -f "$temp_container" >/dev/null
     else
         # Check if this is a special command that should be dispatched
+        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] About to check command dispatch. claude_flags: ${claude_flags[*]}" >&2
         case "${claude_flags[0]:-}" in
             create|shell|config|mcp|migrate-installer|slot|revoke)
                 [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Dispatching command with claude_flags: ${claude_flags[*]}" >&2
