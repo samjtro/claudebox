@@ -115,6 +115,11 @@ main() {
     # Always update args to remove --verbose and rebuild
     set -- "${new_args[@]}"
     
+    # If rebuild was the only argument, default to shell
+    if [[ "$found_rebuild" == "true" ]] && [[ $# -eq 0 ]]; then
+        set -- "shell"
+    fi
+    
     if [[ "$found_rebuild" == "true" ]]; then
         # Get image name for rebuild
         IMAGE_NAME=$(get_image_name)
