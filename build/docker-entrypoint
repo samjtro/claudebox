@@ -53,6 +53,13 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
     fi
 fi
 
+# Create symlink from ~/.claude/commands to ~/.claudebox/commands
+# The ~/.claudebox folder is mounted from the host
+if [ ! -e /home/DOCKERUSER/.claude/commands ] && [ -d /home/DOCKERUSER/.claudebox/commands ]; then
+    mkdir -p /home/DOCKERUSER/.claude
+    ln -s /home/DOCKERUSER/.claudebox/commands /home/DOCKERUSER/.claude/commands
+fi
+
 cd /home/DOCKERUSER
 
 if [[ "${SHELL_MODE:-false}" == "true" ]]; then

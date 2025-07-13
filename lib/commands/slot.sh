@@ -8,10 +8,20 @@ _cmd_create() {
     cecho "Creating new container slot..." "$CYAN"
     echo
     
+    # Debug: Check counter before creation
+    local parent_dir=$(get_parent_dir "$PROJECT_DIR")
+    local counter_before=$(read_counter "$parent_dir")
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Counter before creation: $counter_before" >&2
+    
     # Create a new slot
     local slot_name=$(create_container "$PROJECT_DIR")
-    local parent_dir=$(get_parent_dir "$PROJECT_DIR")
     local slot_dir="$parent_dir/$slot_name"
+    
+    # Debug: Check counter after creation
+    local counter_after=$(read_counter "$parent_dir")
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Counter after creation: $counter_after" >&2
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Created slot name: $slot_name" >&2
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Slot directory: $slot_dir" >&2
     
     success "✓ Created slot: $slot_name"
     echo

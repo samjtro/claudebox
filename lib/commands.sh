@@ -84,6 +84,7 @@ show_no_slots_menu() {
   add <profiles...>               Add development profiles
   remove <profiles...>            Remove development profiles
   install <packages>              Install apt packages
+  import                          Import commands from host to project
   save [flags...]                 Save default flags
   allowlist                       Show/edit firewall allowlist
   info                            Show comprehensive project info
@@ -121,6 +122,7 @@ show_help() {
   add <profiles...>               Add development profiles
   remove <profiles...>            Remove development profiles
   install <packages>              Install apt packages
+  import                          Import commands from host to project
   save [flags...]                 Save default flags
   shell                           Open transient shell
   shell admin                     Open admin shell (sudo enabled)
@@ -151,6 +153,7 @@ show_help() {
   add <profiles...>               Add development profiles\
   remove <profiles...>            Remove development profiles\
   install <packages>              Install apt packages\
+  import                          Import commands from host to project\
   save [flags...]                 Save default flags\
   shell                           Open transient shell\
   shell admin                     Open admin shell (sudo enabled)\
@@ -236,6 +239,7 @@ dispatch_command() {
         rebuild)          _cmd_rebuild "$@" ;;
         tmux)             _cmd_tmux "$@" ;;
         open)             _cmd_open "$@" ;;
+        import)           _cmd_import "$@" ;;
         
         # Special commands that modify container
         config|mcp|migrate-installer) 

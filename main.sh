@@ -199,9 +199,8 @@ main() {
     if [[ -n "${PROJECT_PARENT_DIR:-}" ]]; then
         local allowlist_file="$PROJECT_PARENT_DIR/allowlist"
         if [[ ! -f "$allowlist_file" ]]; then
-            # Get root directory relative to scripts
-            local root_dir="$(dirname "$SCRIPTS_ROOT")"
-            [[ ! -d "$root_dir/build" ]] && root_dir="$(dirname "$SCRIPTS_DIR")"
+            # Root directory is where the script is located
+            local root_dir="$SCRIPT_DIR"
             
             local allowlist_template="${root_dir}/build/allowlist"
             if [[ -f "$allowlist_template" ]]; then
@@ -256,9 +255,8 @@ build_docker_image() {
     mkdir -p "$build_context"
     
     # Copy build files to Docker build context
-    # Get root directory relative to scripts
-    local root_dir="$(dirname "$SCRIPTS_ROOT")"
-    [[ ! -d "$root_dir/build" ]] && root_dir="$(dirname "$SCRIPTS_DIR")"
+    # Root directory is where the script is located
+    local root_dir="$SCRIPT_DIR"
     
     cp "${root_dir}/build/docker-entrypoint" "$build_context/docker-entrypoint.sh" || error "Failed to copy docker-entrypoint.sh"
     cp "${root_dir}/build/init-firewall" "$build_context/init-firewall" || error "Failed to copy init-firewall"

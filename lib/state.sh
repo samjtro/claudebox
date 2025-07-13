@@ -73,17 +73,26 @@ setup_claude_agent_command() {
     local parent_dir="${1:-}"
     [[ -z "$parent_dir" ]] && return 0
     
-    # Create commands symlink in parent folder that will be mounted to ~/.claude/commands
-    local host_commands="$HOME/.claude/commands"
+    # Copy bundled commands to parent folder
+    local bundled_commands="$SCRIPT_DIR/commands"
     local commands_dest="$parent_dir/commands"
     
-    # Only create symlink if commands destination doesn't already exist
+    # Only copy if commands destination doesn't already exist
     if [[ ! -e "$commands_dest" ]]; then
-        # Create symlink to host's Claude commands
-        ln -s "$host_commands" "$commands_dest"
-        
-        if [[ "$VERBOSE" == "true" ]]; then
-            info "Created commands symlink: $commands_dest -> $host_commands"
+        if [[ -d "$bundled_commands" ]]; then
+            # Copy bundled commands
+            cp -r "$bundled_commands" "$commands_dest"
+            
+            if [[ "$VERBOSE" == "true" ]]; then
+                info "Copied bundled commands to: $commands_dest"
+            fi
+        else
+            # Create empty commands directory
+            mkdir -p "$commands_dest"
+            
+            if [[ "$VERBOSE" == "true" ]]; then
+                info "Created empty commands directory: $commands_dest"
+            fi
         fi
     fi
 }
@@ -91,11 +100,9 @@ setup_claude_agent_command() {
 # Calculate checksums for different Docker build layers
 calculate_docker_layer_checksums() {
     local project_dir="${1:-$PROJECT_DIR}"
-    local script_dir="$(dirname "$(dirname "$SCRIPT_PATH")")"  # Get scripts/ dir
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] calculate_docker_layer_checksums: SCRIPT_PATH=$SCRIPT_PATH, script_dir=$script_dir" >&2
-    
-    # Get the root directory (parent of scripts/)
-    local root_dir="$(dirname "$script_dir")"
+    # Since script is now at root, use SCRIPT_DIR which is already set
+    local root_dir="$SCRIPT_DIR"
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] calculate_docker_layer_checksums: SCRIPT_PATH=$SCRIPT_PATH, root_dir=$root_dir" >&2
     
     # Layer 1: Base Dockerfile (rarely changes)
     local dockerfile_checksum=""

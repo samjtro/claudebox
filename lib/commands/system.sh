@@ -203,4 +203,81 @@ _cmd_special() {
     exit 0
 }
 
-export -f _cmd_save _cmd_unlink _cmd_rebuild _cmd_tmux _cmd_open _cmd_special
+_cmd_import() {
+    local host_commands="$HOME/.claude/commands"
+    local parent_dir=$(get_parent_dir "$PROJECT_DIR")
+    local project_commands="$parent_dir/commands"
+    
+    # Check if host commands directory exists
+    if [[ ! -d "$host_commands" ]]; then
+        warn "No commands found at $host_commands"
+        info "Create markdown files in ~/.claude/commands to use with Claude"
+        return 1
+    fi
+    
+    # List available commands
+    local commands=()
+    while IFS= read -r -d '' file; do
+        commands+=("$(basename "$file")")
+    done < <(find "$host_commands" -maxdepth 1 -name "*.md" -type f -print0 | sort -z)
+    
+    if [[ ${#commands[@]} -eq 0 ]]; then
+        warn "No markdown command files found in $host_commands"
+        return 1
+    fi
+    
+    # Show available commands
+    cecho "Available commands to import:" "$CYAN"
+    echo
+    local i=1
+    for cmd in "${commands[@]}"; do
+        printf "  %2d. %s\n" "$i" "$cmd"
+        ((i++))
+    done
+    echo
+    printf "  %2s. %s\n" "a" "Import all commands"
+    echo
+    
+    # Get user selection
+    read -p "Select command(s) to import (number, 'a' for all, or 'q' to quit): " selection
+    
+    case "$selection" in
+        q|Q)
+            info "Import cancelled"
+            return 0
+            ;;
+        a|A|all|ALL)
+            # Import all commands
+            local imported=0
+            for cmd in "${commands[@]}"; do
+                if cp "$host_commands/$cmd" "$project_commands/"; then
+                    ((imported++))
+                fi
+            done
+            success "✓ Imported $imported command(s) to project"
+            ;;
+        [0-9]*)
+            # Import specific command
+            if [[ $selection -ge 1 && $selection -le ${#commands[@]} ]]; then
+                local cmd="${commands[$((selection-1))]}"
+                if cp "$host_commands/$cmd" "$project_commands/"; then
+                    success "✓ Imported $cmd to project"
+                else
+                    error "Failed to import $cmd"
+                fi
+            else
+                error "Invalid selection: $selection"
+            fi
+            ;;
+        *)
+            error "Invalid selection: $selection"
+            ;;
+    esac
+    
+    # Show current project commands
+    echo
+    info "Current project commands:"
+    ls -la "$project_commands"
+}
+
+export -f _cmd_save _cmd_unlink _cmd_rebuild _cmd_tmux _cmd_open _cmd_special _cmd_import
