@@ -29,3 +29,46 @@ if [[ "$HOST_OS" == "macOS" ]] && ! is_case_sensitive_fs; then
   export COMPOSE_DOCKER_CLI_BUILD=1   # new BuildKit path‑normaliser
   export DOCKER_BUILDKIT=1
 fi
+
+# ============================================================================
+# MD5 Command Detection and Helpers
+# ============================================================================
+
+# Detect and set the appropriate MD5 command based on OS
+set_md5_command() {
+    if command -v md5sum >/dev/null 2>&1; then
+        # Linux style: md5sum outputs "hash  filename"
+        MD5_CMD="md5sum"
+        MD5_EXTRACT='cut -d" " -f1'
+    elif command -v md5 >/dev/null 2>&1; then
+        # macOS style: md5 -q outputs just the hash
+        MD5_CMD="md5 -q"
+        MD5_EXTRACT='cat'
+    else
+        error "No MD5 command found. Please install md5sum or md5."
+    fi
+    export MD5_CMD
+    export MD5_EXTRACT
+}
+
+# Calculate MD5 hash of a file (cross-platform)
+md5_file() {
+    local file="$1"
+    if [[ -f "$file" ]]; then
+        $MD5_CMD "$file" 2>/dev/null | eval $MD5_EXTRACT
+    else
+        echo ""
+    fi
+}
+
+# Calculate MD5 hash of a string (cross-platform)
+md5_string() {
+    local string="$1"
+    echo -n "$string" | $MD5_CMD 2>/dev/null | eval $MD5_EXTRACT
+}
+
+# Initialize MD5 command on library load
+set_md5_command
+
+# Export functions
+export -f set_md5_command md5_file md5_string

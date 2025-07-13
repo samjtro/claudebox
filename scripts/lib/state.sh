@@ -94,41 +94,45 @@ setup_claude_agent_command() {
 calculate_docker_layer_checksums() {
     local project_dir="${1:-$PROJECT_DIR}"
     local script_dir="$(dirname "$(dirname "$SCRIPT_PATH")")"  # Get scripts/ dir
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] calculate_docker_layer_checksums: SCRIPT_PATH=$SCRIPT_PATH, script_dir=$script_dir" >&2
+    
+    # Get the root directory (parent of scripts/)
+    local root_dir="$(dirname "$script_dir")"
     
     # Layer 1: Base Dockerfile (rarely changes)
     local dockerfile_checksum=""
-    if [[ -f "$script_dir/assets/templates/Dockerfile.tmpl" ]]; then
-        if command -v md5sum >/dev/null 2>&1; then
-            dockerfile_checksum=$(md5sum "$script_dir/assets/templates/Dockerfile.tmpl" 2>/dev/null | cut -d' ' -f1)
-        elif command -v md5 >/dev/null 2>&1; then
-            dockerfile_checksum=$(md5 -q "$script_dir/assets/templates/Dockerfile.tmpl" 2>/dev/null)
-        fi
+    if [[ -f "$root_dir/build/Dockerfile" ]]; then
+        dockerfile_checksum=$(md5_file "$root_dir/build/Dockerfile")
+        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Dockerfile checksum: $dockerfile_checksum" >&2
     fi
     
     # Layer 2: Entrypoint and init scripts (occasional changes)
     local scripts_checksum=""
-    for file in "$script_dir/assets/templates/docker-entrypoint.tmpl" "$script_dir/assets/templates/init-firewall.tmpl"; do
+    local combined_content=""
+    for file in "$root_dir/build/docker-entrypoint" "$root_dir/build/init-firewall"; do
         if [[ -f "$file" ]]; then
-            if command -v md5sum >/dev/null 2>&1; then
-                scripts_checksum+=$(md5sum "$file" 2>/dev/null | cut -d' ' -f1)
-            elif command -v md5 >/dev/null 2>&1; then
-                scripts_checksum+=$(md5 -q "$file" 2>/dev/null)
-            fi
+            local file_md5=$(md5_file "$file")
+            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] File: $file, MD5: $file_md5" >&2
+            combined_content="${combined_content}${file_md5}"
+        else
+            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] File not found: $file" >&2
         fi
     done
+    # Compute MD5 of the combined MD5s
+    if [[ -n "$combined_content" ]]; then
+        scripts_checksum=$(md5_string "$combined_content")
+        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Combined scripts checksum: $scripts_checksum" >&2
+    fi
     
     # Layer 3: Profile configuration (frequent changes)
     local profiles_checksum=""
     local profiles_ini="$PROJECT_PARENT_DIR/profiles.ini"
     if [[ -f "$profiles_ini" ]]; then
-        if command -v md5sum >/dev/null 2>&1; then
-            profiles_checksum=$(md5sum "$profiles_ini" 2>/dev/null | cut -d' ' -f1)
-        elif command -v md5 >/dev/null 2>&1; then
-            profiles_checksum=$(md5 -q "$profiles_ini" 2>/dev/null)
-        fi
+        profiles_checksum=$(md5_file "$profiles_ini")
+        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Profiles checksum: $profiles_checksum" >&2
     fi
     
-    # Return layer checksums
+    # Return layer checksums (first 8 chars of MD5 hex)
     echo "dockerfile:${dockerfile_checksum:0:8}"
     echo "scripts:${scripts_checksum:0:8}"
     echo "profiles:${profiles_checksum:0:8}"
@@ -139,6 +143,7 @@ needs_docker_rebuild() {
     local project_dir="${1:-$PROJECT_DIR}"
     local image_name="${2:-$IMAGE_NAME}"
     local checksum_file="$PROJECT_PARENT_DIR/.docker_layer_checksums"
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] needs_docker_rebuild called with project_dir=$project_dir, image_name=$image_name" >&2
     
     # If no image exists, need rebuild
     if ! docker image inspect "$image_name" >/dev/null 2>&1; then
@@ -160,6 +165,9 @@ needs_docker_rebuild() {
     if [[ "$current_checksums" != "$stored_checksums" ]]; then
         [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Layer checksums changed, rebuild needed" >&2
         
+        # Check if templates changed (dockerfile or scripts layers)
+        local templates_changed=false
+        
         # Show which layers changed
         if [[ "$VERBOSE" == "true" ]]; then
             echo "[DEBUG] Changed layers:" >&2
@@ -169,8 +177,29 @@ needs_docker_rebuild() {
                 local stored_hash=$(echo "$stored_checksums" | grep "^$layer:" | cut -d: -f2)
                 if [[ "$current_hash" != "$stored_hash" ]]; then
                     echo "[DEBUG]   $layer: $stored_hash → $current_hash" >&2
+                    if [[ "$layer" == "dockerfile" ]] || [[ "$layer" == "scripts" ]]; then
+                        templates_changed=true
+                    fi
                 fi
             done <<< "$current_checksums"
+        else
+            # Still need to check if templates changed even without verbose
+            while IFS= read -r current_line; do
+                local layer="${current_line%%:*}"
+                local current_hash="${current_line#*:}"
+                local stored_hash=$(echo "$stored_checksums" | grep "^$layer:" | cut -d: -f2)
+                if [[ "$current_hash" != "$stored_hash" ]]; then
+                    if [[ "$layer" == "dockerfile" ]] || [[ "$layer" == "scripts" ]]; then
+                        templates_changed=true
+                        break
+                    fi
+                fi
+            done <<< "$current_checksums"
+        fi
+        
+        # If templates changed, we need to force no-cache
+        if [[ "$templates_changed" == "true" ]]; then
+            export CLAUDEBOX_FORCE_NO_CACHE=true
         fi
         
         return 0
@@ -184,10 +213,12 @@ needs_docker_rebuild() {
 save_docker_layer_checksums() {
     local project_dir="${1:-$PROJECT_DIR}"
     local checksum_file="$PROJECT_PARENT_DIR/.docker_layer_checksums"
+    
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] save_docker_layer_checksums called" >&2
     local checksums=$(calculate_docker_layer_checksums "$project_dir")
     
     echo "$checksums" > "$checksum_file"
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Saved layer checksums:" >&2
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Saved layer checksums to $checksum_file:" >&2
     [[ "$VERBOSE" == "true" ]] && echo "$checksums" | sed 's/^/[DEBUG]   /' >&2
 }
 

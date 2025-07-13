@@ -114,8 +114,11 @@ run_claudebox_container() {
             if [ -t 0 ] && [ -t 1 ]; then
                 docker_args+=("-it")
             fi
-            # Always use --rm for auto-cleanup
-            docker_args+=("--rm")
+            # Use --rm for auto-cleanup unless it's an admin container
+            # Admin containers need to persist so we can commit changes
+            if [[ -z "$container_name" ]] || [[ "$container_name" != *"admin"* ]]; then
+                docker_args+=("--rm")
+            fi
             if [[ -n "$container_name" ]]; then
                 docker_args+=("--name" "$container_name")
             fi
@@ -175,18 +178,48 @@ run_claudebox_container() {
         -v "$PROJECT_DIR":/workspace
         -v "$PROJECT_PARENT_DIR":/home/$DOCKER_USER/.claudebox
         -v "$HOME/.claudebox/scripts":/home/$DOCKER_USER/.claudebox/scripts:ro
-        -v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude
-        -v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json
-        -v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config
-        -v "$PROJECT_CLAUDEBOX_DIR/.cache":/home/$DOCKER_USER/.cache
-        -v "$HOME/.ssh":"/home/$DOCKER_USER/.ssh:ro"
+    )
+    
+    # Ensure .claude directory exists
+    if [[ ! -d "$PROJECT_CLAUDEBOX_DIR/.claude" ]]; then
+        mkdir -p "$PROJECT_CLAUDEBOX_DIR/.claude"
+    fi
+    docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude)
+    
+    # Ensure .claude.json file exists with empty JSON if not present
+    if [[ ! -f "$PROJECT_CLAUDEBOX_DIR/.claude.json" ]]; then
+        echo '{}' > "$PROJECT_CLAUDEBOX_DIR/.claude.json"
+    fi
+    docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json)
+    
+    # Mount .config directory
+    docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config)
+    
+    # Mount .cache directory
+    docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.cache":/home/$DOCKER_USER/.cache)
+    
+    # Mount SSH directory
+    docker_args+=(-v "$HOME/.ssh":"/home/$DOCKER_USER/.ssh:ro")
+    
+    # Add environment variables
+    local project_name=$(basename "$PROJECT_DIR")
+    local slot_name=$(basename "$PROJECT_CLAUDEBOX_DIR")
+    
+    # Calculate slot index for hostname
+    local slot_index=1  # default if we can't determine
+    if [[ -n "$PROJECT_PARENT_DIR" ]] && [[ -n "$slot_name" ]]; then
+        slot_index=$(get_slot_index "$slot_name" "$PROJECT_PARENT_DIR" 2>/dev/null || echo "1")
+    fi
+    
+    docker_args+=(
         -e "NODE_ENV=${NODE_ENV:-production}"
         -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
-        -e "CLAUDEBOX_PROJECT_NAME=$(basename "$PROJECT_DIR")"
-        -e "CLAUDEBOX_SLOT_NAME=$(basename "$PROJECT_CLAUDEBOX_DIR")"
+        -e "CLAUDEBOX_PROJECT_NAME=$project_name"
+        -e "CLAUDEBOX_SLOT_NAME=$slot_name"
         -e "TERM=${TERM:-xterm-256color}"
         -e "VERBOSE=${VERBOSE:-false}"
         -e "CLAUDEBOX_WRAP_TMUX=${CLAUDEBOX_WRAP_TMUX:-false}"
+        --hostname "${project_name}-${slot_index}"
         --cap-add NET_ADMIN
         --cap-add NET_RAW
         "$IMAGE_NAME"
@@ -224,7 +257,16 @@ check_container_exists() {
 run_docker_build() {
     info "Running docker build..."
     export DOCKER_BUILDKIT=1
+    
+    # Check if we need to force rebuild due to template changes
+    local no_cache_flag=""
+    if [[ "${CLAUDEBOX_FORCE_NO_CACHE:-false}" == "true" ]]; then
+        no_cache_flag="--no-cache"
+        info "Forcing full rebuild (templates changed)"
+    fi
+    
     docker build \
+        $no_cache_flag \
         --progress=${BUILDKIT_PROGRESS:-auto} \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         --build-arg USER_ID="$USER_ID" \

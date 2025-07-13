@@ -404,7 +404,7 @@ get_slot_index() {
     local path=$(dirname "$parent_dir")  # Get original path from parent
     local max=$(read_counter "$parent_dir")
     
-    for ((idx=0; idx<max; idx++)); do
+    for ((idx=1; idx<=max; idx++)); do
         local name=$(generate_container_name "$path" "$idx")
         if [[ "$name" == "$slot_name" ]]; then
             echo "$idx"

@@ -941,9 +941,13 @@ _cmd_info() {
 }
 
 _cmd_rebuild() {
-    # Rebuild is handled in main() before dispatching
-    # This function shouldn't be called but is here for completeness
-    exit 0
+    # Set rebuild flag and continue with normal execution
+    export REBUILD=true
+    
+    # Remove 'rebuild' from the arguments and continue
+    # This allows "claudebox rebuild" to rebuild then launch Claude
+    # or "claudebox rebuild shell" to rebuild then open shell
+    _forward_to_container "${@}"
 }
 
 _cmd_update() {

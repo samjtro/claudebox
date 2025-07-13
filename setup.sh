@@ -9,6 +9,7 @@ echo "📂 Installing ClaudeBox to $TARGET_DIR"
 rm -rf "$TARGET_DIR"
 mkdir -p "$INSTALL_ROOT"
 cp -a scripts "$INSTALL_ROOT/"
+cp -a build "$INSTALL_ROOT/"
 chmod +x "$INSTALL_ROOT/scripts/bin/claudebox"
 
 mkdir -p "$(dirname "$LINK_PATH")"
