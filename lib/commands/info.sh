@@ -108,32 +108,32 @@ _cmd_info() {
     # Claude Commands
     cecho "📝 Claude Commands" "$WHITE"
     local cmd_count=0
-    if [[ -d "$HOME/.claudebox/commands" ]]; then
-        cmd_count=$(ls -1 "$HOME/.claudebox/commands"/*.md 2>/dev/null | wc -l)
+    if [[ -d "$HOME/.claude/commands" ]]; then
+        cmd_count=$(ls -1 "$HOME/.claude/commands"/*.md 2>/dev/null | wc -l)
     fi
     local project_cmd_count=0
-    if [[ -d ".claude/commands" ]]; then
-        project_cmd_count=$(ls -1 .claude/commands/*.md 2>/dev/null | wc -l)
+    if [[ -e "$PROJECT_PARENT_DIR/commands" ]]; then
+        project_cmd_count=$(ls -1 "$PROJECT_PARENT_DIR/commands"/*.md 2>/dev/null | wc -l)
     fi
 
     if [[ $cmd_count -gt 0 ]] || [[ $project_cmd_count -gt 0 ]]; then
-        echo "   Global:  $cmd_count command(s)"
-        if [[ $cmd_count -gt 0 ]] && [[ -d "$HOME/.claudebox/commands" ]]; then
-            for cmd_file in "$HOME/.claudebox/commands"/*.md; do
+        echo "   Host:    $cmd_count command(s)"
+        if [[ $cmd_count -gt 0 ]] && [[ -d "$HOME/.claude/commands" ]]; then
+            for cmd_file in "$HOME/.claude/commands"/*.md; do
                 [[ -f "$cmd_file" ]] || continue
                 echo "            - $(basename "$cmd_file" .md)"
             done
         fi
-        echo "   Project: $project_cmd_count command(s)"
-        if [[ $project_cmd_count -gt 0 ]] && [[ -d ".claude/commands" ]]; then
-            for cmd_file in .claude/commands/*.md; do
+        echo "   Project: $project_cmd_count command(s) (symlinked)"
+        if [[ $project_cmd_count -gt 0 ]] && [[ -e "$PROJECT_PARENT_DIR/commands" ]]; then
+            for cmd_file in "$PROJECT_PARENT_DIR/commands"/*.md; do
                 [[ -f "$cmd_file" ]] || continue
                 echo "            - $(basename "$cmd_file" .md)"
             done
         fi
     else
         echo -e "   ${YELLOW}No custom commands found${NC}"
-        echo -e "   Location: ~/.claudebox/commands/ (global), .claude/commands/ (project)"
+        echo -e "   Location: ~/.claude/commands/ (host), project/.claudebox/commands/ (symlink)"
     fi
     echo
 

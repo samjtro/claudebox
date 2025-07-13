@@ -38,12 +38,13 @@ run_test() {
     fi
 }
 
-# Extract just the profile functions
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDEBOX_SCRIPT="$SCRIPT_DIR/../claudebox"
+# Extract just the profile functions from config.sh
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$TEST_DIR")"
+CONFIG_SCRIPT="$ROOT_DIR/lib/config.sh"
 # Extract the profile functions - they start at get_profile_packages and end at profile_exists
 # Include the entire profile_exists function by searching for the next function after it
-PROFILE_FUNCS=$(sed -n '/^get_profile_packages()/,/^expand_profile()/p' "$CLAUDEBOX_SCRIPT" | sed '$d')
+PROFILE_FUNCS=$(sed -n '/^get_profile_packages()/,/^expand_profile()/p' "$CONFIG_SCRIPT" | sed '$d')
 
 echo "1. Testing profile functions"
 echo "----------------------------"

@@ -79,6 +79,8 @@ init_project_dir() {
     [[ -f "$parent/profiles.ini" ]] || touch "$parent/profiles.ini"
     # store project path
     echo "$path" > "$parent/.project_path"
+    # set up commands symlink in parent (once per project)
+    setup_claude_agent_command "$parent"
 }
 
 # Read/write per-project counter with locking
@@ -106,10 +108,6 @@ init_slot_dir() {
     if [[ ! -f "$dir/.claude.json" ]]; then
         echo '{}' > "$dir/.claude.json"
     fi
-    
-    # Set up claude-agent commands symlink
-    export PROJECT_CLAUDEBOX_DIR="$dir"
-    setup_claude_agent_command
 }
 
 # Create or reuse a container slot:

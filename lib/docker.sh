@@ -193,6 +193,11 @@ run_claudebox_container() {
     fi
     docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude)
     
+    # Mount commands from parent directory if exists
+    if [[ -e "$PROJECT_PARENT_DIR/commands" ]]; then
+        docker_args+=(-v "$PROJECT_PARENT_DIR/commands":/home/$DOCKER_USER/.claude/commands:ro)
+    fi
+    
     # Ensure .claude.json file exists with empty JSON if not present
     if [[ ! -f "$PROJECT_CLAUDEBOX_DIR/.claude.json" ]]; then
         echo '{}' > "$PROJECT_CLAUDEBOX_DIR/.claude.json"

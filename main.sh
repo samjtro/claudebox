@@ -24,12 +24,10 @@ get_script_path() {
 
 readonly SCRIPT_PATH="$(get_script_path)"
 readonly SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
-readonly SCRIPTS_ROOT="$(dirname "$SCRIPT_DIR")"  # scripts/ directory
+# Now that script is at root, SCRIPT_DIR is the repo/install root
 readonly INSTALL_ROOT="$HOME/.claudebox"
-readonly SCRIPTS_DIR="$INSTALL_ROOT/scripts"
 export SCRIPT_PATH
 export CLAUDEBOX_SCRIPT_DIR="${SCRIPT_DIR}"
-export SCRIPTS_ROOT
 
 # Set PROJECT_DIR early
 export PROJECT_DIR="$(pwd)"
@@ -46,14 +44,8 @@ if [[ -f "$HOME/.claudebox/default-flags" ]]; then
 fi
 
 # --------------------------------------------------------------- source libs --
-# During development, use relative paths. In production, use SCRIPTS_DIR
-if [[ -d "${SCRIPTS_ROOT}/lib" ]]; then
-    # Development mode - running from repo
-    LIB_DIR="${SCRIPTS_ROOT}/lib"
-else
-    # Production mode - running from ~/.claudebox/scripts
-    LIB_DIR="${SCRIPTS_DIR}/lib"
-fi
+# LIB_DIR is always relative to where the script is located
+LIB_DIR="${SCRIPT_DIR}/lib"
 
 # Load libraries in order - cli.sh must be loaded first for parsing
 for lib in cli common env os state project docker config commands welcome; do

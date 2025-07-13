@@ -36,9 +36,9 @@ update_symlink() {
 
 # Ensure shared commands folder exists and is up to date
 setup_shared_commands() {
-    local shared_commands="$HOME/.claudebox/commands"
-    local root_dir="$(dirname "$(dirname "$(dirname "$SCRIPT_PATH")")")"  # Get root dir
-    local commands_source="$root_dir/commands"
+    local shared_commands="$HOME/.claude/commands"
+    # Script is now at root, so SCRIPT_DIR is the root dir
+    local commands_source="$SCRIPT_DIR/commands"
     
     # Create shared commands directory if it doesn't exist
     mkdir -p "$shared_commands"
@@ -69,23 +69,21 @@ setup_shared_commands() {
 }
 
 setup_claude_agent_command() {
-    # Check if PROJECT_CLAUDEBOX_DIR is set
-    [[ -z "${PROJECT_CLAUDEBOX_DIR:-}" ]] && return 0
+    # Takes parent directory as argument
+    local parent_dir="${1:-}"
+    [[ -z "$parent_dir" ]] && return 0
     
-    # Create commands symlink in project's .claude folder (mounts to ~/.claude in container)
-    local shared_commands="$HOME/.claudebox/commands"
-    local commands_dest="$PROJECT_CLAUDEBOX_DIR/.claude/commands"
+    # Create commands symlink in parent folder that will be mounted to ~/.claude/commands
+    local host_commands="$HOME/.claude/commands"
+    local commands_dest="$parent_dir/commands"
     
     # Only create symlink if commands destination doesn't already exist
     if [[ ! -e "$commands_dest" ]]; then
-        # Ensure parent directory exists
-        mkdir -p "$PROJECT_CLAUDEBOX_DIR/.claude"
-        
-        # Create symlink to shared commands
-        ln -s "$shared_commands" "$commands_dest"
+        # Create symlink to host's Claude commands
+        ln -s "$host_commands" "$commands_dest"
         
         if [[ "$VERBOSE" == "true" ]]; then
-            info "Created commands symlink: $commands_dest -> $shared_commands"
+            info "Created commands symlink: $commands_dest -> $host_commands"
         fi
     fi
 }

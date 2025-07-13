@@ -1,36 +1,45 @@
 #!/bin/bash
 # Build the ClaudeBox self-extracting installer script
+# Packages entire repo for extraction to ~/.claudebox/
 
 set -euo pipefail
 
-TEMPLATE=".builder/script_template.sh"
-OUTPUT="claudebox.run.sh"
+TEMPLATE=".builder/script_template_root.sh"
+OUTPUT="claudebox"  # Changed from claudebox.run.sh
 ARCHIVE="archive.tar.gz"
 
-# Include only files that will be extracted under .claudebox/scripts
-INCLUDE_PATHS=(
-  scripts/
-  commands/
-  setup.sh
-  README.md
-)
+# Create archive in temp location to avoid "file changed as we read it" error
+TEMP_ARCHIVE="/tmp/claudebox_archive_$$.tar.gz"
 
-# Safety check
-if [[ ${#INCLUDE_PATHS[@]} -eq 0 ]]; then
-  echo "❌ No content to package. Aborting." >&2
+# Create archive of entire repo (excluding hidden files and build output)
+echo "📦 Creating archive..."
+tar -czf "$TEMP_ARCHIVE" \
+  --exclude='.*' \
+  --exclude='claudebox' \
+  --exclude='test_project' \
+  .
+
+# Move to final location
+mv "$TEMP_ARCHIVE" "$ARCHIVE"
+
+# Calculate SHA256
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA256=$(sha256sum "$ARCHIVE" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  SHA256=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
+else
+  echo "❌ sha256sum or shasum required" >&2
   exit 1
 fi
 
-# Create compressed payload
-echo "📦 Creating archive..."
-tar -czf "$ARCHIVE" "${INCLUDE_PATHS[@]}"
-
-# Combine template + archive into final .run.sh
+# Create final script with SHA256 embedded
 echo "🔧 Assembling $OUTPUT..."
-# Append archive directly after template
-cat "$TEMPLATE" "$ARCHIVE" > "$OUTPUT"
+sed "s/__ARCHIVE_SHA256__/$SHA256/g" "$TEMPLATE" > "$OUTPUT"
+cat "$ARCHIVE" >> "$OUTPUT"
 chmod +x "$OUTPUT"
-rm "$ARCHIVE"
 
-echo "✅ $OUTPUT created with contents:"
-printf ' - %s\n' "${INCLUDE_PATHS[@]}"
+# Cleanup
+rm -f "$ARCHIVE"
+
+echo "✅ $OUTPUT created (SHA256: $SHA256)"
+echo "📏 Size: $(ls -lh "$OUTPUT" | awk '{print $5}')"
