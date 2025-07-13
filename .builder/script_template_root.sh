@@ -1,13 +1,12 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Single-file "claudebox" installer & updater (silent on success)
 # macOS (bash 3.2+) & Linux compatible
 # Release SHA256: __ARCHIVE_SHA256__
 #
 
-# Fail fast and report errors
+# Fail fast
 set -e
-trap 'echo "⛔ Installation error at line $LINENO" >&2' ERR
 
 # Silence all normal output
 exec 1>/dev/null

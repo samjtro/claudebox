@@ -14,10 +14,23 @@ TEMP_ARCHIVE="/tmp/claudebox_archive_$$.tar.gz"
 # Create archive of entire repo (excluding hidden files and build output)
 echo "📦 Creating archive..."
 tar -czf "$TEMP_ARCHIVE" \
-  --exclude='.*' \
+  --exclude='.git' \
+  --exclude='.gitignore' \
+  --exclude='.github' \
+  --exclude='.builder' \
+  --exclude='.bmad-core' \
+  --exclude='.bmad_core' \
+  --exclude='.claude' \
+  --exclude='.vscode' \
+  --exclude='.idea' \
   --exclude='claudebox' \
   --exclude='test_project' \
-  .
+  --exclude='test_new_project' \
+  --exclude='test-project' \
+  --exclude='*.swp' \
+  --exclude='*~' \
+  --exclude='archive.tar.gz' \
+  *
 
 # Move to final location
 mv "$TEMP_ARCHIVE" "$ARCHIVE"
