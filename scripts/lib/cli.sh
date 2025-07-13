@@ -11,7 +11,14 @@ readonly HOST_ONLY_FLAGS=(--verbose rebuild tmux)
 readonly CONTROL_FLAGS=(--enable-sudo --disable-firewall)
 readonly SCRIPT_COMMANDS=(shell create slot slots revoke profiles projects profile info help -h --help add remove install allowlist clean)
 
-# Parse all arguments into buckets
+# parse_cli_args - Central CLI parsing with four-bucket architecture
+# Usage: parse_cli_args "$@"
+# Sets global variables:
+#   host_flags: Array of host-only flags (help, version, etc)
+#   control_flags: Array of control flags (verbose, enable-sudo, etc)
+#   script_command: Single command for ClaudeBox to execute
+#   pass_through: Array of args to pass to Claude in container
+# Note: Each argument goes into exactly ONE bucket - no duplication
 parse_cli_args() {
     local all_args=("$@")
     

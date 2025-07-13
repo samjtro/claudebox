@@ -94,19 +94,6 @@ write_counter() {
 }
 
 # Acquire/release a lock on the counter via mkdir
-lock_counter() {
-    local p="$1"
-    local lockdir="$p/.counter.lock"
-    while ! mkdir "$lockdir" 2>/dev/null; do
-        sleep 0.05
-    done
-}
-
-unlock_counter() {
-    local p="$1"
-    local lockdir="$p/.counter.lock"
-    rmdir "$lockdir"
-}
 
 # Initialize a container slot directory
 init_slot_dir() {
@@ -119,6 +106,10 @@ init_slot_dir() {
     if [[ ! -f "$dir/.claude.json" ]]; then
         echo '{}' > "$dir/.claude.json"
     fi
+    
+    # Set up claude-agent commands symlink
+    export PROJECT_CLAUDEBOX_DIR="$dir"
+    setup_claude_agent_command
 }
 
 # Create or reuse a container slot:

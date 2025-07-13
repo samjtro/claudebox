@@ -88,16 +88,6 @@ logo_small() {
     printf "${WHITE}%s${NC}" "$cb"
 }
 
-# -------- spinner function ----------------------------------------------------
-show_spinner() {
-    local pid=$1 msg=$2 spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0
-    echo -n "$msg "
-    while kill -0 "$pid" 2>/dev/null; do
-        printf "\b%s" "${spin:i++%${#spin}:1}"
-        sleep 0.1
-    done
-    echo -e "\b${GREEN}✓${NC}"
-}
 
 # -------- fillbar progress indicator ------------------------------------------
 FILLBAR_PID=""
@@ -138,4 +128,4 @@ fillbar() {
     esac
 }
 
-export -f cecho error warn info success logo logo_header logo_small show_spinner fillbar
+export -f cecho error warn info success logo logo_header logo_small fillbar

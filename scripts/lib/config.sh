@@ -10,13 +10,6 @@ _read_ini() {               # $1=file $2=section $3=key
   ' "$1" 2>/dev/null
 }
 
-write_default_flag_file() {  # $* = flags | empty to clear
-  local file="${CLAUDEBOX_HOME}/default-flags"
-  if (($#)); then printf '%s\n' "$@" > "${file}"
-  else : > "${file}"
-  fi
-  success "Saved default flags → ${file}"
-}
 
 # -------- Profile functions (Bash 3.2 compatible) -----------------------------
 get_profile_packages() {
@@ -194,5 +187,5 @@ get_current_profiles() {
     printf '%s\n' "${current_profiles[@]}"
 }
 
-export -f _read_ini write_default_flag_file get_profile_packages get_profile_description get_all_profile_names profile_exists expand_profile
+export -f _read_ini get_profile_packages get_profile_description get_all_profile_names profile_exists expand_profile
 export -f get_profile_file_path read_config_value read_profile_section update_profile_section get_current_profiles

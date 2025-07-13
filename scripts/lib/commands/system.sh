@@ -5,7 +5,7 @@
 # System utilities and special features
 
 _cmd_save() {
-    local defaults_file="$HOME/.claudebox/default-flags"
+    local defaults_file="${CLAUDEBOX_HOME}/default-flags"
 
     if [[ $# -eq 0 ]]; then
         if [[ -f "$defaults_file" ]]; then
@@ -15,7 +15,7 @@ _cmd_save() {
             info "No saved default flags to clear"
         fi
     else
-        mkdir -p "$HOME/.claudebox"
+        mkdir -p "${CLAUDEBOX_HOME}"
         printf '%s\n' "$@" > "$defaults_file"
         success "Saved default flags: $*"
     fi

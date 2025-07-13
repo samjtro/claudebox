@@ -77,7 +77,14 @@ docker_exec_user() {
     docker exec -u "$DOCKER_USER" "$@"
 }
 
-# Standardized container run function - ensures consistent mounts and environment
+# run_claudebox_container - Main entry point for container execution
+# Usage: run_claudebox_container <container_name> <mode> [args...]
+# Args:
+#   container_name: Name for the container (empty for auto-generated)
+#   mode: "interactive", "detached", "pipe", or "attached"
+#   args: Commands to pass to claude in container
+# Returns: Exit code from container
+# Note: Handles all mounting, environment setup, and security configuration
 run_claudebox_container() {
     local container_name="$1"
     local run_mode="$2"  # "interactive", "detached", "pipe", or "attached"
