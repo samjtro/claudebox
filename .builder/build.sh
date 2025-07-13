@@ -10,6 +10,7 @@ ARCHIVE="archive.tar.gz"
 # Include only files that will be extracted under .claudebox/scripts
 INCLUDE_PATHS=(
   scripts/
+  commands/
   setup.sh
   README.md
 )

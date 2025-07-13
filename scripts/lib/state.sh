@@ -37,8 +37,8 @@ update_symlink() {
 # Ensure shared commands folder exists and is up to date
 setup_shared_commands() {
     local shared_commands="$HOME/.claudebox/commands"
-    local script_dir="$(dirname "$(dirname "$SCRIPT_PATH")")"  # Get scripts/ dir
-    local commands_source="$script_dir/commands"
+    local root_dir="$(dirname "$(dirname "$(dirname "$SCRIPT_PATH")")")"  # Get root dir
+    local commands_source="$root_dir/commands"
     
     # Create shared commands directory if it doesn't exist
     mkdir -p "$shared_commands"
