@@ -142,43 +142,76 @@ run_claudebox_container() {
             ;;
     esac
     
-    # Check for tmux socket and mount if available
+    # Always check for tmux socket and mount if available (or create one)
+    local tmux_socket=""
+    local tmux_socket_dir=""
+    
+    # If TMUX env var is set, extract socket path from it
     if [[ -n "${TMUX:-}" ]]; then
-        local tmux_socket=""
+        # TMUX format is typically: /tmp/tmux-1000/default,23456,0
+        tmux_socket="${TMUX%%,*}"
+        tmux_socket_dir=$(dirname "$tmux_socket")
+    else
+        # Look for existing tmux socket or determine where to create one
+        local uid=$(id -u)
+        local default_socket_dir="/tmp/tmux-$uid"
         
-        # If TMUX env var is set, extract socket path from it
-        if [[ -n "${TMUX:-}" ]]; then
-            # TMUX format is typically: /tmp/tmux-1000/default,23456,0
-            tmux_socket="${TMUX%%,*}"
-        else
-            # Look for default tmux socket location
-            local uid=$(id -u)
-            for socket_dir in "/tmp/tmux-$uid" "/var/run/tmux-$uid" "$HOME/.tmux"; do
-                if [[ -d "$socket_dir" ]]; then
-                    # Find the default socket
-                    for socket in "$socket_dir"/default "$socket_dir"/*; do
-                        if [[ -S "$socket" ]]; then
-                            tmux_socket="$socket"
-                            break
-                        fi
-                    done
-                    [[ -n "$tmux_socket" ]] && break
+        # Check common locations for existing sockets
+        for socket_dir in "$default_socket_dir" "/var/run/tmux-$uid" "$HOME/.tmux"; do
+            if [[ -d "$socket_dir" ]]; then
+                # Find any socket in the directory
+                for socket in "$socket_dir"/default "$socket_dir"/*; do
+                    if [[ -S "$socket" ]]; then
+                        tmux_socket="$socket"
+                        tmux_socket_dir="$socket_dir"
+                        break
+                    fi
+                done
+                [[ -n "$tmux_socket" ]] && break
+            fi
+        done
+        
+        # If no socket found, ensure we have a socket directory for potential tmux usage
+        if [[ -z "$tmux_socket" ]]; then
+            tmux_socket_dir="$default_socket_dir"
+            # Create the socket directory if it doesn't exist
+            if [[ ! -d "$tmux_socket_dir" ]]; then
+                mkdir -p "$tmux_socket_dir"
+                chmod 700 "$tmux_socket_dir"
+            fi
+            
+            # Check if tmux is installed and create a detached session if so
+            if command -v tmux >/dev/null 2>&1; then
+                # Create a minimal tmux server without attaching
+                # This creates the socket but doesn't start any session
+                tmux -S "$tmux_socket_dir/default" start-server \; 2>/dev/null || true
+                if [[ -S "$tmux_socket_dir/default" ]]; then
+                    tmux_socket="$tmux_socket_dir/default"
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        echo "[DEBUG] Created tmux server socket at: $tmux_socket" >&2
+                    fi
                 fi
-            done
+            fi
+        fi
+    fi
+    
+    # Mount the socket and directory if we have them
+    if [[ -n "$tmux_socket_dir" ]] && [[ -d "$tmux_socket_dir" ]]; then
+        # Always mount the socket directory
+        docker_args+=(-v "$tmux_socket_dir:$tmux_socket_dir")
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Mounting tmux socket directory: $tmux_socket_dir" >&2
         fi
         
-        # Mount the socket if found
+        # Mount specific socket if it exists
         if [[ -n "$tmux_socket" ]] && [[ -S "$tmux_socket" ]]; then
             if [[ "$VERBOSE" == "true" ]]; then
-                echo "[DEBUG] Mounting tmux socket: $tmux_socket" >&2
+                echo "[DEBUG] Tmux socket found at: $tmux_socket" >&2
             fi
-            docker_args+=(-v "$tmux_socket:$tmux_socket")
-            # Also mount the parent directory for tmux to work properly
-            local socket_dir=$(dirname "$tmux_socket")
-            docker_args+=(-v "$socket_dir:$socket_dir")
-            # Pass TMUX env var if available
-            [[ -n "${TMUX:-}" ]] && docker_args+=(-e "TMUX=$TMUX")
         fi
+        
+        # Pass TMUX env var if available
+        [[ -n "${TMUX:-}" ]] && docker_args+=(-e "TMUX=$TMUX")
     fi
     
     # Standard configuration for ALL containers
@@ -210,6 +243,14 @@ run_claudebox_container() {
     
     # Mount SSH directory
     docker_args+=(-v "$HOME/.ssh":"/home/$DOCKER_USER/.ssh:ro")
+    
+    # Mount .env file if it exists in the project directory
+    if [[ -f "$PROJECT_DIR/.env" ]]; then
+        docker_args+=(-v "$PROJECT_DIR/.env":/workspace/.env:ro)
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Mounting .env file from project directory" >&2
+        fi
+    fi
     
     # Add environment variables
     local project_name=$(basename "$PROJECT_DIR")

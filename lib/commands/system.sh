@@ -43,7 +43,7 @@ _cmd_rebuild() {
 }
 
 _cmd_tmux() {
-    # Check if tmux is installed in the host
+    # Check if tmux is installed on the host
     if ! command -v tmux >/dev/null 2>&1; then
         error "tmux is not installed on the host system.\nPlease install tmux first:\n  Ubuntu/Debian: sudo apt-get install tmux\n  macOS: brew install tmux\n  RHEL/CentOS: sudo yum install tmux"
     fi
@@ -54,7 +54,7 @@ _cmd_tmux() {
         project_folder_name=$(get_project_folder_name "$PROJECT_DIR" 2>/dev/null || echo "NONE")
         
         if [[ "$project_folder_name" == "NONE" ]]; then
-            error "No container slots available. Please run 'claudebox create' to create a container slot."
+            show_no_slots_menu  # This will exit
         fi
         
         IMAGE_NAME=$(get_image_name)
@@ -64,18 +64,31 @@ _cmd_tmux() {
     
     # Generate container name
     local slot_name=$(basename "$PROJECT_CLAUDEBOX_DIR")
-    local container_name="claudebox-${project_folder_name}-${slot_name}"
+    local parent_folder_name=$(generate_parent_folder_name "$PROJECT_DIR")
+    local container_name="claudebox-${parent_folder_name}-${slot_name}"
     
-    info "Starting ClaudeBox with tmux support..."
-    echo
-    cecho "Tmux will be available inside the container for multi-pane workflows." "$YELLOW"
-    echo
+    # Check if we're already in a tmux session
+    if [[ -n "${TMUX:-}" ]]; then
+        info "Already in a tmux session. Running ClaudeBox directly..."
+        # Just run the container normally - socket will be auto-mounted
+        run_claudebox_container "$container_name" "interactive" "$@"
+    else
+        # Create a unique session name based on the project
+        local session_name="claudebox-$(basename "$PROJECT_DIR")"
+        
+        # Check if session already exists
+        if tmux has-session -t "$session_name" 2>/dev/null; then
+            # Session exists - attach to it
+            info "Attaching to existing tmux session: $session_name"
+            exec tmux attach-session -t "$session_name"
+        else
+            # Create new tmux session and run claudebox in it
+            info "Creating new tmux session: $session_name"
+            # Use exec to replace the current shell with tmux
+            exec tmux new-session -s "$session_name" "$SCRIPT_PATH" "$@"
+        fi
+    fi
     
-    # Export flag to indicate tmux mode
-    export CLAUDEBOX_TMUX_MODE=true
-    
-    # Run the container - tmux socket will be mounted if available
-    run_claudebox_container "$container_name" "interactive" "${@:-}"
     exit 0
 }
 

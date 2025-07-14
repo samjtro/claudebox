@@ -28,7 +28,7 @@ _cmd_shell() {
         project_folder_name=$(get_project_folder_name "$PROJECT_DIR" 2>/dev/null || echo "NONE")
         
         if [[ "$project_folder_name" == "NONE" ]]; then
-            error "No container slots available. Please run 'claudebox create' to create a container slot."
+            show_no_slots_menu  # This will exit
         fi
         
         IMAGE_NAME=$(get_image_name)

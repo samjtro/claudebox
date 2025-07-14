@@ -72,7 +72,20 @@ source "${COMMANDS_DIR}/system.sh"
 
 # Show menu when no slots exist
 show_no_slots_menu() {
-    show_help "No container slots found for this project." "To get started: claudebox create in the base of your folder."
+    echo
+    logo_small
+    echo
+    cecho "No available slots found" "$YELLOW"
+    echo
+    printf "To continue, you'll need an available container slot.\n"
+    echo
+    printf "  ${CYAN}claudebox create${NC}  - Create a new slot\n"
+    printf "  ${CYAN}claudebox slots${NC}   - View existing slots\n"
+    echo
+    printf "  ${DIM}Hint: You can create multiple slots, each with different${NC}\n"
+    printf "  ${DIM}authentication tokens and settings.${NC}\n"
+    echo
+    exit 1
 }
 
 # Show menu when no ready slots are available
