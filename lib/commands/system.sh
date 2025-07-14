@@ -43,6 +43,12 @@ _cmd_rebuild() {
 }
 
 _cmd_tmux() {
+    # Handle tmux conf subcommand
+    if [[ "${1:-}" == "conf" ]]; then
+        _install_tmux_conf
+        exit 0
+    fi
+    
     # Check if tmux is installed on the host
     if ! command -v tmux >/dev/null 2>&1; then
         error "tmux is not installed on the host system.\nPlease install tmux first:\n  Ubuntu/Debian: sudo apt-get install tmux\n  macOS: brew install tmux\n  RHEL/CentOS: sudo yum install tmux"
@@ -282,4 +288,79 @@ _cmd_import() {
     ls -la "$project_commands"
 }
 
-export -f _cmd_save _cmd_unlink _cmd_rebuild _cmd_tmux _cmd_open _cmd_special _cmd_import
+_install_tmux_conf() {
+    local tmux_conf_template="${CLAUDEBOX_HOME}/source/claudebox/templates/tmux.conf"
+    local user_tmux_conf="$HOME/.tmux.conf"
+    
+    # Check if template exists
+    if [[ ! -f "$tmux_conf_template" ]]; then
+        error "tmux configuration template not found at: $tmux_conf_template"
+    fi
+    
+    # Check if tmux is installed
+    if ! command -v tmux >/dev/null 2>&1; then
+        warn "tmux is not installed on your system."
+        echo "Please install tmux first:"
+        echo "  Ubuntu/Debian: sudo apt-get install tmux"
+        echo "  macOS: brew install tmux"
+        echo "  RHEL/CentOS: sudo yum install tmux"
+        echo
+        read -p "Continue anyway? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Installation cancelled"
+            return 0
+        fi
+    fi
+    
+    # Backup existing config if it exists
+    if [[ -f "$user_tmux_conf" ]]; then
+        local timestamp=$(date +%Y%m%d_%H%M%S)
+        local backup_file="$user_tmux_conf.backup_$timestamp"
+        
+        info "Backing up existing tmux configuration..."
+        if cp "$user_tmux_conf" "$backup_file"; then
+            success "Backed up to: $backup_file"
+        else
+            error "Failed to backup existing configuration"
+        fi
+    fi
+    
+    # Install new configuration
+    info "Installing ClaudeBox tmux configuration..."
+    if cp "$tmux_conf_template" "$user_tmux_conf"; then
+        success "✓ Installed tmux configuration to: $user_tmux_conf"
+        echo
+        cecho "Features enabled:" "$GREEN"
+        echo "  • Vi-style navigation (hjkl)"
+        echo "  • Quick pane layouts (Ctrl+Alt+1/2/3/4)"
+        echo "  • Fast pane switching (Ctrl+Alt+Arrows)"
+        echo "  • Zoom toggle (Ctrl+Alt+0)"
+        echo "  • Session persistence with tmux-resurrect"
+        echo "  • System clipboard integration"
+        echo
+        
+        # Check if TPM is installed
+        if [[ ! -d "$HOME/.tmux/plugins/tpm" ]]; then
+            cecho "Note: Tmux Plugin Manager (TPM) not found." "$YELLOW"
+            echo "To install TPM and enable all features:"
+            echo
+            echo "  git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm"
+            echo
+            echo "Then inside tmux, press: Prefix + I (Ctrl-a then Shift-i)"
+        else
+            cecho "TPM detected. Press Prefix + I inside tmux to install/update plugins." "$GREEN"
+        fi
+        
+        # Reload tmux if running
+        if [[ -n "${TMUX:-}" ]]; then
+            echo
+            info "Reloading tmux configuration..."
+            tmux source-file "$user_tmux_conf" && success "✓ Configuration reloaded"
+        fi
+    else
+        error "Failed to install tmux configuration"
+    fi
+}
+
+export -f _cmd_save _cmd_unlink _cmd_rebuild _cmd_tmux _cmd_open _cmd_special _cmd_import _install_tmux_conf
