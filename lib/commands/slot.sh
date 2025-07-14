@@ -8,7 +8,9 @@ _cmd_create() {
     # Debug: Check counter before creation
     local parent_dir=$(get_parent_dir "$PROJECT_DIR")
     local counter_before=$(read_counter "$parent_dir")
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Counter before creation: $counter_before" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] Counter before creation: $counter_before" >&2
+    fi
     
     # Create a new slot
     local slot_name=$(create_container "$PROJECT_DIR")
@@ -16,9 +18,11 @@ _cmd_create() {
     
     # Debug: Check counter after creation
     local counter_after=$(read_counter "$parent_dir")
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Counter after creation: $counter_after" >&2
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Created slot name: $slot_name" >&2
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Slot directory: $slot_dir" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] Counter after creation: $counter_after" >&2
+        echo "[DEBUG] Created slot name: $slot_name" >&2
+        echo "[DEBUG] Slot directory: $slot_dir" >&2
+    fi
     
     # Show updated slots list directly
     list_project_slots "$PROJECT_DIR"
@@ -68,44 +72,64 @@ _cmd_slot() {
 }
 
 _cmd_revoke() {
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Starting _cmd_revoke with PROJECT_DIR=$PROJECT_DIR" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] Starting _cmd_revoke with PROJECT_DIR=$PROJECT_DIR" >&2
+    fi
     local parent
     parent=$(get_parent_dir "$PROJECT_DIR")
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] parent=$parent" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] parent=$parent" >&2
+    fi
     local max
     max=$(read_counter "$parent")
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] max=$max" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] max=$max" >&2
+    fi
     
     if [ $max -eq 0 ]; then
         echo "No slots to revoke"
         return 0
     fi
     
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Checking argument: ${1:-}" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] Checking argument: ${1:-}" >&2
+    fi
     
     # Check for "all" argument
     if [ "${1:-}" = "all" ]; then
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Processing revoke all" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Processing revoke all" >&2
+        fi
         local removed_count=0
         local existing_count=0
         
         # First count how many slots actually exist
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Starting count loop, max=$max" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Starting count loop, max=$max" >&2
+        fi
         for ((idx=1; idx<=max; idx++)); do
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Count loop idx=$idx" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] Count loop idx=$idx" >&2
+            fi
             local name
             name=$(generate_container_name "$PROJECT_DIR" "$idx")
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Generated name=$name" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] Generated name=$name" >&2
+            fi
             local dir="$parent/$name"
             if [ -d "$dir" ]; then
                 ((existing_count++)) || true
             fi
         done
         
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Finished count loop, existing_count=$existing_count, max=$max" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Finished count loop, existing_count=$existing_count, max=$max" >&2
+        fi
         
         # Now remove them
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Starting removal loop" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Starting removal loop" >&2
+        fi
         for ((idx=$max; idx>=1; idx--)); do
             local name=$(generate_container_name "$PROJECT_DIR" "$idx")
             local dir="$parent/$name"
@@ -115,7 +139,9 @@ _cmd_revoke() {
                 if docker ps --format "{{.Names}}" | grep -q "^claudebox-.*-${name}$"; then
                     info "Slot $idx is in use, skipping"
                 else
-                    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Removing slot $idx: $dir" >&2
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        echo "[DEBUG] Removing slot $idx: $dir" >&2
+                    fi
                     if rm -rf "$dir"; then
                         ((removed_count++)) || true
                     else
@@ -123,18 +149,26 @@ _cmd_revoke() {
                     fi
                 fi
             else
-                [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Slot $idx not found: $dir" >&2
+                if [[ "$VERBOSE" == "true" ]]; then
+                    echo "[DEBUG] Slot $idx not found: $dir" >&2
+                fi
             fi
         done
         
         # If we removed all existing slots, set counter to 0
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] removed_count=$removed_count, existing_count=$existing_count" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] removed_count=$removed_count, existing_count=$existing_count" >&2
+        fi
         if [ $removed_count -eq $existing_count ]; then
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Setting counter to 0" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] Setting counter to 0" >&2
+            fi
             write_counter "$parent" 0
         else
             # Otherwise prune the counter
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Pruning counter" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] Pruning counter" >&2
+            fi
             prune_slot_counter "$PROJECT_DIR"
         fi
         
@@ -162,12 +196,18 @@ _cmd_revoke() {
         fi
         
         # Show updated slots list
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] About to call list_project_slots" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] About to call list_project_slots" >&2
+        fi
         list_project_slots "$PROJECT_DIR"
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] list_project_slots returned" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] list_project_slots returned" >&2
+        fi
     fi
     
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Exiting _cmd_revoke" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] Exiting _cmd_revoke" >&2
+    fi
     return 0
 }
 

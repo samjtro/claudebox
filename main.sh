@@ -156,7 +156,9 @@ main() {
         fi
         
         # Existing user - core rebuilt, continue normal flow
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Core image built, continuing with normal flow..." >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Core image built, continuing with normal flow..." >&2
+        fi
     fi
     
     # Step 6: Initialize project directory (creates parent with profiles.ini)
@@ -218,7 +220,9 @@ main() {
         cmd_requirements="docker"
     fi
     
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Command requirements: $cmd_requirements" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] Command requirements: $cmd_requirements" >&2
+    fi
     
     # Step 10a: Set IMAGE_NAME if needed (for "image" or "docker" requirements)
     if [[ "$cmd_requirements" != "none" ]]; then
@@ -305,10 +309,12 @@ main() {
             # parent_folder_name already set in step 8
             local container_name="claudebox-${parent_folder_name}-${slot_name}"
             
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] PROJECT_CLAUDEBOX_DIR=$PROJECT_CLAUDEBOX_DIR" >&2
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] slot_name=$slot_name" >&2
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] parent_folder_name=$parent_folder_name" >&2
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] container_name=$container_name" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] PROJECT_CLAUDEBOX_DIR=$PROJECT_CLAUDEBOX_DIR" >&2
+                echo "[DEBUG] slot_name=$slot_name" >&2
+                echo "[DEBUG] parent_folder_name=$parent_folder_name" >&2
+                echo "[DEBUG] container_name=$container_name" >&2
+            fi
             
             # Check if stdin is not a terminal (i.e., we're receiving piped input)
             # and -p/--print flag isn't already present

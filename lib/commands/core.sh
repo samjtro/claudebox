@@ -18,7 +18,9 @@ _cmd_help() {
 }
 
 _cmd_shell() {
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] _cmd_shell called with args: $*" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] _cmd_shell called with args: $*" >&2
+    fi
     
     # Set up slot variables if not already set
     if [[ -z "${IMAGE_NAME:-}" ]]; then
@@ -82,8 +84,10 @@ _cmd_shell() {
         }
         trap cleanup_admin EXIT
         
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Running admin container with flags: ${shell_flags[*]}" >&2
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Remaining args after processing: $*" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Running admin container with flags: ${shell_flags[*]}" >&2
+            echo "[DEBUG] Remaining args after processing: $*" >&2
+        fi
         # Don't pass any remaining arguments - only shell and the flags
         run_claudebox_container "$temp_container" "interactive" shell "${shell_flags[@]}"
         

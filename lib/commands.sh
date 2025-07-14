@@ -194,7 +194,9 @@ _forward_to_container() {
 # Routes commands to their handlers based on the parsed CLI_SCRIPT_COMMAND
 dispatch_command() {
     local cmd="${1:-}"; shift || true
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] dispatch_command called with: cmd='$cmd' remaining args='$@'" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] dispatch_command called with: cmd='$cmd' remaining args='$@'" >&2
+    fi
     
     case "${cmd}" in
         # Core commands
@@ -242,7 +244,9 @@ dispatch_command() {
     esac
     
     local exit_code=$?
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] dispatch_command returning with exit code: $exit_code" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] dispatch_command returning with exit code: $exit_code" >&2
+    fi
     return $exit_code
 }
 

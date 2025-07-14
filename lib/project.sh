@@ -121,22 +121,32 @@ init_slot_dir() {
 # - Initialize directories and .claude.json
 create_container() {
     local path="$1" parent idx max name dir
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] create_container called with path: $path" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] create_container called with path: $path" >&2
+    fi
     init_project_dir "$path"
     parent=$(get_parent_dir "$path")
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] parent dir: $parent" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] parent dir: $parent" >&2
+    fi
 
     # read max (no locking needed for single-user system)
     max=$(read_counter "$parent")
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] counter max: $max" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] counter max: $max" >&2
+    fi
 
     # attempt dead-slot reuse (starting from slot 1)
     for ((idx=1; idx<=max; idx++)); do
         name=$(generate_container_name "$path" "$idx")
         dir="$parent/$name"
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] checking slot $idx: name=$name, dir=$dir" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] checking slot $idx: name=$name, dir=$dir" >&2
+        fi
         if [[ ! -d "$dir" ]]; then
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] slot $idx doesn't exist, creating it" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] slot $idx doesn't exist, creating it" >&2
+            fi
             init_slot_dir "$dir"
             echo "$name"
             return
@@ -147,7 +157,9 @@ create_container() {
     idx=$((max + 1))
     name=$(generate_container_name "$path" "$idx")
     dir="$parent/$name"
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] creating new slot $idx: name=$name, dir=$dir" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] creating new slot $idx: name=$name, dir=$dir" >&2
+    fi
     init_slot_dir "$dir"
     write_counter "$parent" $idx
     echo "$name"

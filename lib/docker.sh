@@ -169,7 +169,9 @@ run_claudebox_container() {
         
         # Mount the socket if found
         if [[ -n "$tmux_socket" ]] && [[ -S "$tmux_socket" ]]; then
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Mounting tmux socket: $tmux_socket" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] Mounting tmux socket: $tmux_socket" >&2
+            fi
             docker_args+=(-v "$tmux_socket:$tmux_socket")
             # Also mount the parent directory for tmux to work properly
             local socket_dir=$(dirname "$tmux_socket")
@@ -238,7 +240,9 @@ run_claudebox_container() {
     fi
     
     # Run the container
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Docker run command: docker run ${docker_args[*]}" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] Docker run command: docker run ${docker_args[*]}" >&2
+    fi
     docker run "${docker_args[@]}"
     local exit_code=$?
     

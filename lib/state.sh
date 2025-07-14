@@ -11,12 +11,16 @@ update_symlink() {
         local current_target
         current_target=$(readlink "$LINK_TARGET" 2>/dev/null || echo "")
         if [[ "$current_target" == "$SCRIPT_PATH" ]]; then
-            [[ "$VERBOSE" == "true" ]] && info "Symlink already correct: $LINK_TARGET → $SCRIPT_PATH"
+            if [[ "$VERBOSE" == "true" ]]; then
+                info "Symlink already correct: $LINK_TARGET → $SCRIPT_PATH"
+            fi
             return 0
         else
             # Remove incorrect symlink
             rm -f "$LINK_TARGET"
-            [[ "$VERBOSE" == "true" ]] && info "Removing outdated symlink"
+            if [[ "$VERBOSE" == "true" ]]; then
+                info "Removing outdated symlink"
+            fi
         fi
     elif [[ -e "$LINK_TARGET" ]]; then
         # Something else exists at this path
@@ -102,13 +106,17 @@ calculate_docker_layer_checksums() {
     local project_dir="${1:-$PROJECT_DIR}"
     # Since script is now at root, use SCRIPT_DIR which is already set
     local root_dir="$SCRIPT_DIR"
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] calculate_docker_layer_checksums: SCRIPT_PATH=$SCRIPT_PATH, root_dir=$root_dir" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] calculate_docker_layer_checksums: SCRIPT_PATH=$SCRIPT_PATH, root_dir=$root_dir" >&2
+    fi
     
     # Layer 1: Base Dockerfile (rarely changes)
     local dockerfile_checksum=""
     if [[ -f "$root_dir/build/Dockerfile" ]]; then
         dockerfile_checksum=$(md5_file "$root_dir/build/Dockerfile")
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Dockerfile checksum: $dockerfile_checksum" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Dockerfile checksum: $dockerfile_checksum" >&2
+        fi
     fi
     
     # Layer 2: Entrypoint and init scripts (occasional changes)
@@ -117,16 +125,22 @@ calculate_docker_layer_checksums() {
     for file in "$root_dir/build/docker-entrypoint" "$root_dir/build/init-firewall"; do
         if [[ -f "$file" ]]; then
             local file_md5=$(md5_file "$file")
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] File: $file, MD5: $file_md5" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] File: $file, MD5: $file_md5" >&2
+            fi
             combined_content="${combined_content}${file_md5}"
         else
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] File not found: $file" >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] File not found: $file" >&2
+            fi
         fi
     done
     # Compute MD5 of the combined MD5s
     if [[ -n "$combined_content" ]]; then
         scripts_checksum=$(md5_string "$combined_content")
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Combined scripts checksum: $scripts_checksum" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Combined scripts checksum: $scripts_checksum" >&2
+        fi
     fi
     
     # Layer 3: Profile configuration (frequent changes)
@@ -134,7 +148,9 @@ calculate_docker_layer_checksums() {
     local profiles_ini="$PROJECT_PARENT_DIR/profiles.ini"
     if [[ -f "$profiles_ini" ]]; then
         profiles_checksum=$(md5_file "$profiles_ini")
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Profiles checksum: $profiles_checksum" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Profiles checksum: $profiles_checksum" >&2
+        fi
     fi
     
     # Return layer checksums (first 8 chars of MD5 hex)
@@ -148,11 +164,15 @@ needs_docker_rebuild() {
     local project_dir="${1:-$PROJECT_DIR}"
     local image_name="${2:-$IMAGE_NAME}"
     local checksum_file="$PROJECT_PARENT_DIR/.docker_layer_checksums"
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] needs_docker_rebuild called with project_dir=$project_dir, image_name=$image_name" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] needs_docker_rebuild called with project_dir=$project_dir, image_name=$image_name" >&2
+    fi
     
     # If no image exists, need rebuild
     if ! docker image inspect "$image_name" >/dev/null 2>&1; then
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Image doesn't exist, rebuild needed" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Image doesn't exist, rebuild needed" >&2
+        fi
         return 0
     fi
     
@@ -161,14 +181,18 @@ needs_docker_rebuild() {
     
     # If no checksum file, need rebuild
     if [[ ! -f "$checksum_file" ]]; then
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] No checksum file, rebuild needed" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] No checksum file, rebuild needed" >&2
+        fi
         return 0
     fi
     
     # Compare layer checksums
     local stored_checksums=$(cat "$checksum_file" 2>/dev/null || echo "")
     if [[ "$current_checksums" != "$stored_checksums" ]]; then
-        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Layer checksums changed, rebuild needed" >&2
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Layer checksums changed, rebuild needed" >&2
+        fi
         
         # Check if templates changed (dockerfile or scripts layers)
         local templates_changed=false
@@ -210,7 +234,9 @@ needs_docker_rebuild() {
         return 0
     fi
     
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] All layer checksums match, no rebuild needed" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] All layer checksums match, no rebuild needed" >&2
+    fi
     return 1
 }
 
@@ -219,12 +245,16 @@ save_docker_layer_checksums() {
     local project_dir="${1:-$PROJECT_DIR}"
     local checksum_file="$PROJECT_PARENT_DIR/.docker_layer_checksums"
     
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] save_docker_layer_checksums called" >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] save_docker_layer_checksums called" >&2
+    fi
     local checksums=$(calculate_docker_layer_checksums "$project_dir")
     
     echo "$checksums" > "$checksum_file"
-    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Saved layer checksums to $checksum_file:" >&2
-    [[ "$VERBOSE" == "true" ]] && echo "$checksums" | sed 's/^/[DEBUG]   /' >&2
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[DEBUG] Saved layer checksums to $checksum_file:" >&2
+        echo "$checksums" | sed 's/^/[DEBUG]   /' >&2
+    fi
 }
 
 export -f update_symlink setup_shared_commands setup_claude_agent_command calculate_docker_layer_checksums needs_docker_rebuild save_docker_layer_checksums
