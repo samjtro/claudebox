@@ -68,11 +68,11 @@ logo_header() {
             ch="${l:$i:1}"
             [ "$ch" = " " ] && { o+="$ch"; continue; }
             cc=$(printf '%d' "'$ch" 2>/dev/null||echo 0)
-            if [ $cc -ge 32 ] && [ $cc -le 126 ] && [ "$ch" != "•" ]; then n='\033[37m'      # White for regular text
-            elif [ $cc -ge 9552 ] && [ $cc -le 9580 ]; then n='\033[90m'  # Grey for box drawing
-            elif [ $cc -eq 9608 ] || [ $cc -ge 9600 ] && [ $cc -le 9631 ]; then n='\033[37m'  # White for block chars
-            elif [ "$ch" = "•" ]; then n='\033[31m'                       # Red for bullets
-            else n='\033[37m'; fi                                          # White for others
+            if [ $cc -ge 32 ] && [ $cc -le 126 ] && [ "$ch" != "•" ]; then n='\033[33m'      # Yellow for regular text
+            elif [ $cc -ge 9552 ] && [ $cc -le 9580 ]; then n='\033[34m'  # Blue for box drawing
+            elif [ $cc -eq 9608 ] || [ $cc -ge 9600 ] && [ $cc -le 9631 ]; then n='\033[31m'  # Red for block chars (CLAUDEBOX)
+            elif [ "$ch" = "•" ]; then n='\033[32m'                       # Green for bullets
+            else n='\033[33m'; fi                                          # Yellow for others
             [ "$n" != "$c" ] && { o+="$n"; c="$n"; }
             o+="$ch"
         done
@@ -85,7 +85,7 @@ logo_small() {
 █▀▀ █   ▄▀█ █ █ █▀▄ █▀▀ █▄▄ █▀█ ▀▄▀
 █▄▄ █▄▄ █▀█ █▄█ █▄▀ ██▄ █▄█ █▄█ █ █
 '
-    printf "${WHITE}%s${NC}" "$cb"
+    printf "${RED}%s${NC}" "$cb"
 }
 
 

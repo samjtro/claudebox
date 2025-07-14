@@ -184,21 +184,17 @@ run_claudebox_container() {
         -w /workspace
         -v "$PROJECT_DIR":/workspace
         -v "$PROJECT_PARENT_DIR":/home/$DOCKER_USER/.claudebox
-        -v "$HOME/.claudebox/scripts":/home/$DOCKER_USER/.claudebox/scripts:ro
+        -v "$HOME/.claudebox/source":/home/$DOCKER_USER/.claudebox/source:ro
     )
     
     # Ensure .claude directory exists
     if [[ ! -d "$PROJECT_CLAUDEBOX_DIR/.claude" ]]; then
         mkdir -p "$PROJECT_CLAUDEBOX_DIR/.claude"
     fi
+    
     docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude)
     
-    # Mount commands from parent directory if exists
-    if [[ -e "$PROJECT_PARENT_DIR/commands" ]]; then
-        docker_args+=(-v "$PROJECT_PARENT_DIR/commands":/home/$DOCKER_USER/.claude/commands:ro)
-    fi
-    
-    # Ensure .claude.json file exists with empty JSON if not present
+    # Ensure .claude.json exists for mounting
     if [[ ! -f "$PROJECT_CLAUDEBOX_DIR/.claude.json" ]]; then
         echo '{}' > "$PROJECT_CLAUDEBOX_DIR/.claude.json"
     fi
@@ -231,7 +227,6 @@ run_claudebox_container() {
         -e "TERM=${TERM:-xterm-256color}"
         -e "VERBOSE=${VERBOSE:-false}"
         -e "CLAUDEBOX_WRAP_TMUX=${CLAUDEBOX_WRAP_TMUX:-false}"
-        --hostname "${project_name}-${slot_index}"
         --cap-add NET_ADMIN
         --cap-add NET_RAW
         "$IMAGE_NAME"
@@ -287,7 +282,7 @@ run_docker_build() {
         --build-arg NODE_VERSION="$NODE_VERSION" \
         --build-arg DELTA_VERSION="$DELTA_VERSION" \
         --build-arg REBUILD_TIMESTAMP="${CLAUDEBOX_REBUILD_TIMESTAMP:-}" \
-        -f "$1" -t "$IMAGE_NAME" "$2"
+        -f "$1" -t "$IMAGE_NAME" "$2" || error "Docker build failed"
 }
 
 export -f check_docker install_docker configure_docker_nonroot docker_exec_root docker_exec_user run_claudebox_container check_container_exists run_docker_build

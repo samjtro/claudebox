@@ -8,20 +8,13 @@
 # Fail fast
 set -e
 
-# Silence all normal output
-exec 1>/dev/null
-
-# 1) Dev-mode detection - if running from a git repo, just execute directly
-if [ -f ./main.sh ] && [ -d ./lib ]; then
-  exec bash ./main.sh "$@"
-fi
-
-# 2) "Release" mode install/update
+# 1) Release mode install/update
 INSTALL_DIR="$HOME/.claudebox"
+SOURCE_DIR="$INSTALL_DIR/source"
 ARCHIVE_SHA256="__ARCHIVE_SHA256__"
 ARCHIVE_PATH="$INSTALL_DIR/archive.tar.gz"
 
-mkdir -p "$INSTALL_DIR"
+mkdir -p "$SOURCE_DIR"
 
 # 3) Choose checksum tool
 if   command -v sha256sum >/dev/null 2>&1; then
@@ -40,10 +33,10 @@ if [ -f "$ARCHIVE_PATH" ] \
 else
   SKIP=$(awk '/^__ARCHIVE_BELOW__/ {print NR+1; exit}' "$0")
   tail -n +"$SKIP" "$0" > "$ARCHIVE_PATH"
-  tar -xz -f "$ARCHIVE_PATH" -C "$INSTALL_DIR" --strip-components=1
+  tar -xz -f "$ARCHIVE_PATH" -C "$SOURCE_DIR" --strip-components=1
 fi
 
-# 5) Launch main.sh from install directory
-exec bash "$INSTALL_DIR/main.sh" "$@"
+# 5) Launch main.sh from source directory
+exec bash "$SOURCE_DIR/main.sh" "$@"
 
 __ARCHIVE_BELOW__

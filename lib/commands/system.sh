@@ -120,26 +120,15 @@ _cmd_open() {
         #info "Path: $project_path"
         #echo
         
-        # Save current directory
-        local original_dir="$PWD"
-        
-        # Change to project directory and run claudebox
-        cd "$project_path" || error "Failed to change to project directory"
-        
-        # Set PROJECT_DIR explicitly
-        export PROJECT_DIR="$project_path"
-        
-        # Run claudebox with any additional arguments
+        # Just run claudebox with PROJECT_DIR set to the target project
+        # No need to change directories at all!
         if [[ $# -eq 0 ]]; then
             # No arguments - run interactive claude
-            "$SCRIPT_PATH"
+            PROJECT_DIR="$project_path" "$SCRIPT_PATH"
         else
             # Pass through arguments
-            "$SCRIPT_PATH" "$@"
+            PROJECT_DIR="$project_path" "$SCRIPT_PATH" "$@"
         fi
-        
-        # Return to original directory
-        cd "$original_dir"
     else
         # Multiple matches - show them
         error "Multiple projects match '$search':"

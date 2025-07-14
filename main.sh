@@ -29,8 +29,8 @@ readonly INSTALL_ROOT="$HOME/.claudebox"
 export SCRIPT_PATH
 export CLAUDEBOX_SCRIPT_DIR="${SCRIPT_DIR}"
 
-# Set PROJECT_DIR early
-export PROJECT_DIR="$(pwd)"
+# Set PROJECT_DIR early (but allow override from environment)
+export PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 
 # Initialize VERBOSE to false (will be set properly by CLI parser)
 export VERBOSE=false
@@ -89,6 +89,76 @@ main() {
             ;;
     esac
     
+    # Step 5a: Build core image if it doesn't exist
+    local core_image="claudebox-core"
+    if ! docker image inspect "$core_image" >/dev/null 2>&1; then
+        # Show logo during build
+        logo
+        
+        local build_context="$HOME/.claudebox/docker-build-context"
+        mkdir -p "$build_context"
+        
+        # Copy build files
+        local root_dir="$SCRIPT_DIR"
+        cp "${root_dir}/build/docker-entrypoint" "$build_context/docker-entrypoint.sh" || error "Failed to copy docker-entrypoint.sh"
+        cp "${root_dir}/build/init-firewall" "$build_context/init-firewall" || error "Failed to copy init-firewall"
+        cp "${root_dir}/build/dockerignore" "$build_context/.dockerignore" || error "Failed to copy .dockerignore"
+        chmod +x "$build_context/docker-entrypoint.sh" "$build_context/init-firewall"
+        
+        # Create core Dockerfile
+        local core_dockerfile="$build_context/Dockerfile.core"
+        local base_dockerfile=$(cat "${root_dir}/build/Dockerfile") || error "Failed to read base Dockerfile"
+        
+        # Remove profile installations and labels placeholders for core
+        local core_dockerfile_content="$base_dockerfile"
+        core_dockerfile_content="${core_dockerfile_content//\{\{PROFILE_INSTALLATIONS\}\}/}"
+        core_dockerfile_content="${core_dockerfile_content//\{\{LABELS\}\}/LABEL claudebox.type=\"core\"}"
+        
+        echo "$core_dockerfile_content" > "$core_dockerfile"
+        
+        # Build core image
+        docker build \
+            --progress=${BUILDKIT_PROGRESS:-auto} \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --build-arg USER_ID="$USER_ID" \
+            --build-arg GROUP_ID="$GROUP_ID" \
+            --build-arg USERNAME="$DOCKER_USER" \
+            --build-arg NODE_VERSION="$NODE_VERSION" \
+            --build-arg DELTA_VERSION="$DELTA_VERSION" \
+            -f "$core_dockerfile" -t "$core_image" "$build_context" || error "Failed to build core image"
+            
+        # Check if this is truly a first-time setup (no projects exist)
+        local project_count=$(ls -1d "$HOME/.claudebox/projects"/*/ 2>/dev/null | wc -l)
+        
+        if [[ $project_count -eq 0 ]]; then
+            # First-time user - show welcome menu
+            logo_small
+            printf '\n'
+            cecho "Welcome to ClaudeBox!" "$CYAN"
+            printf '\n'
+            printf '%s\n' "ClaudeBox is ready to use. Here's how to get started:"
+            printf '\n'
+            printf '%s\n' "1. Navigate to your project directory:"
+            printf "   ${CYAN}%s${NC}\n" "cd /path/to/your/project"
+            printf '\n'
+            printf '%s\n' "2. Create your first container slot:"
+            printf "   ${CYAN}%s${NC}\n" "claudebox create"
+            printf '\n'
+            printf '%s\n' "3. Launch Claude:"
+            printf "   ${CYAN}%s${NC}\n" "claudebox"
+            printf '\n'
+            printf '%s\n' "Other useful commands:"
+            printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox help" "Show all available commands"
+            printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox profiles" "List available development profiles"
+            printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox projects" "List all ClaudeBox projects"
+            printf '\n'
+            exit 0
+        fi
+        
+        # Existing user - core rebuilt, continue normal flow
+        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Core image built, continuing with normal flow..." >&2
+    fi
+    
     # Step 6: Initialize project directory (creates parent with profiles.ini)
     init_project_dir "$PROJECT_DIR"
     PROJECT_PARENT_DIR=$(get_parent_dir "$PROJECT_DIR")
@@ -134,22 +204,31 @@ main() {
                 show_help
                 exit 0
                 ;;
-            # All other commands can proceed without a slot
+            # All other commands (like open, create, etc) can proceed without a slot
         esac
     fi
     
-    # Step 10: Check if command requires Docker
-    local need_docker=false
+    # Step 10: Check command requirements
+    local cmd_requirements="none"
     
     if [[ -n "${CLI_SCRIPT_COMMAND}" ]]; then
-        requires_docker_image "${CLI_SCRIPT_COMMAND}" && need_docker=true
+        cmd_requirements=$(get_command_requirements "${CLI_SCRIPT_COMMAND}")
     else
         # No script command means we're running claude - needs Docker
-        need_docker=true
+        cmd_requirements="docker"
     fi
     
-    # Step 10: Build Docker image if needed
-    if [[ "$need_docker" == "true" ]]; then
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Command requirements: $cmd_requirements" >&2
+    
+    # Step 10a: Set IMAGE_NAME if needed (for "image" or "docker" requirements)
+    if [[ "$cmd_requirements" != "none" ]]; then
+        # Commands that need image name should have it set even without Docker
+        IMAGE_NAME=$(get_image_name)
+        export IMAGE_NAME
+    fi
+    
+    # Step 10b: Build Docker image if needed (only for "docker" requirements)
+    if [[ "$cmd_requirements" == "docker" ]]; then
         # Check if rebuild needed
         local need_rebuild=false
         
@@ -176,9 +255,13 @@ main() {
         if [[ "$need_rebuild" == "true" ]]; then
             # Set rebuild timestamp to bust Docker cache when templates change
             export CLAUDEBOX_REBUILD_TIMESTAMP=$(date +%s)
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] About to build Docker image..." >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] About to build Docker image..." >&2
+            fi
             build_docker_image
-            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Docker build completed, continuing..." >&2
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "[DEBUG] Docker build completed, continuing..." >&2
+            fi
         fi
     fi
     
@@ -263,6 +346,7 @@ build_docker_image() {
     cp "${root_dir}/build/dockerignore" "$build_context/.dockerignore" || error "Failed to copy .dockerignore"
     chmod +x "$build_context/docker-entrypoint.sh" "$build_context/init-firewall"
     
+    
     # Build profile installations
     local profiles_file="$PROJECT_PARENT_DIR/profiles.ini"
     local profile_installations=""
@@ -295,7 +379,9 @@ build_docker_image() {
     
     # Create Dockerfile
     local dockerfile="$build_context/Dockerfile"
-    local base_dockerfile=$(cat "${root_dir}/build/Dockerfile") || error "Failed to read base Dockerfile"
+    
+    # Use the minimal project Dockerfile template
+    local base_dockerfile=$(cat "${root_dir}/build/Dockerfile.project") || error "Failed to read project Dockerfile template"
     
     # Build labels
     local project_folder_name=$(generate_parent_folder_name "$PROJECT_DIR")
@@ -304,7 +390,7 @@ LABEL claudebox.profiles=\"$profile_hash\"
 LABEL claudebox.profiles.crc=\"$profiles_file_hash\"
 LABEL claudebox.project=\"$project_folder_name\""
     
-    # Replace placeholders
+    # Replace placeholders in the project template
     local final_dockerfile="$base_dockerfile"
     final_dockerfile="${final_dockerfile//\{\{PROFILE_INSTALLATIONS\}\}/$profile_installations}"
     final_dockerfile="${final_dockerfile//\{\{LABELS\}\}/$labels}"

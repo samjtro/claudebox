@@ -8,27 +8,45 @@ _cmd_profiles() {
     # Get current profiles
     local current_profiles=($(get_current_profiles))
     
+    # Show logo first
+    logo_small
+    printf '\n'
+    
+    # Show commands at the top
+    printf '%s\n' "Commands:"
+    printf "  ${CYAN}claudebox add <profiles...>${NC}    - Add development profiles to your project\n"
+    printf "  ${CYAN}claudebox remove <profiles...>${NC} - Remove profiles from your project\n"
+    printf '\n'
+    
     # Show currently enabled profiles
     if [[ ${#current_profiles[@]} -gt 0 ]]; then
-        cecho "Currently Enabled Profiles:" "$YELLOW"
-        echo -e "  ${current_profiles[*]}"
-        echo
+        cecho "Currently enabled:" "$YELLOW"
+        printf "  %s\n" "${current_profiles[*]}"
+        printf '\n'
     fi
     
-    cecho "Available ClaudeBox Profiles:" "$CYAN"
-    echo
+    # Show available profiles
+    cecho "Available profiles:" "$CYAN"
+    printf '\n'
     for profile in $(get_all_profile_names | tr ' ' '\n' | sort); do
         local desc=$(get_profile_description "$profile")
-        local marker=""
+        local is_enabled=false
         # Check if profile is currently enabled
         for enabled in "${current_profiles[@]}"; do
             if [[ "$enabled" == "$profile" ]]; then
-                marker=" ${YELLOW}[ENABLED]${NC}"
+                is_enabled=true
                 break
             fi
         done
-        echo -e "  ${GREEN}$profile${NC} - $desc$marker"
+        printf "  ${GREEN}%-15s${NC} " "$profile"
+        if [[ "$is_enabled" == "true" ]]; then
+            printf "${GREEN}✓${NC} "
+        else
+            printf "  "
+        fi
+        printf "%s\n" "$desc"
     done
+    printf '\n'
     exit 0
 }
 

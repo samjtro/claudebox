@@ -86,7 +86,7 @@ cd claudebox
 ```
 
 The installer will:
-- ✅ Extract ClaudeBox to `~/.claudebox/scripts/`
+- ✅ Extract ClaudeBox to `~/.claudebox/source/`
 - ✅ Create symlink at `~/.local/bin/claudebox`
 - ✅ Check for Docker (install if needed on first run)
 - ✅ Configure Docker for non-root usage (on first run)

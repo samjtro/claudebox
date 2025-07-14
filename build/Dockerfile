@@ -161,9 +161,7 @@ ARG REBUILD_TIMESTAMP
 RUN echo "Rebuild timestamp: ${REBUILD_TIMESTAMP:-none}" > /dev/null
 
 COPY --chown=$USERNAME docker-entrypoint.sh /usr/local/bin/docker-entrypoint
-RUN sed -i "s|/home/DOCKERUSER|/home/$USERNAME|g" /usr/local/bin/docker-entrypoint && \
-    sed -i "s|runuser -u DOCKERUSER|runuser -u $USERNAME|g" /usr/local/bin/docker-entrypoint && \
-    sed -i "s|/etc/sudoers.d/DOCKERUSER|/etc/sudoers.d/$USERNAME|g" /usr/local/bin/docker-entrypoint && \
+RUN sed -i "s|DOCKERUSER|$USERNAME|g" /usr/local/bin/docker-entrypoint && \
     sed -i "s|DOCKERUSER|$USERNAME|g" /home/$USERNAME/init-firewall && \
     chmod +x /usr/local/bin/docker-entrypoint
 

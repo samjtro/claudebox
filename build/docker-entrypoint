@@ -53,11 +53,9 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
     fi
 fi
 
-# Create symlink from ~/.claude/commands to ~/.claudebox/commands
-# The ~/.claudebox folder is mounted from the host
-if [ ! -e /home/DOCKERUSER/.claude/commands ] && [ -d /home/DOCKERUSER/.claudebox/commands ]; then
-    mkdir -p /home/DOCKERUSER/.claude
-    ln -s /home/DOCKERUSER/.claudebox/commands /home/DOCKERUSER/.claude/commands
+# Create symlink to commands if they exist in .claudebox
+if [[ -d "/home/DOCKERUSER/.claudebox/commands" ]] && [[ ! -e "/home/DOCKERUSER/.claude/commands" ]]; then
+    ln -s "/home/DOCKERUSER/.claudebox/commands" "/home/DOCKERUSER/.claude/commands"
 fi
 
 cd /home/DOCKERUSER
@@ -68,7 +66,7 @@ if [[ "${SHELL_MODE:-false}" == "true" ]]; then
         # For tmux, create an init script that shows logo then starts shell
         cat > /tmp/tmux-init.sh << 'EOF'
 #!/bin/bash
-source /home/DOCKERUSER/.claudebox/scripts/lib/common.sh 2>/dev/null
+source /home/DOCKERUSER/.claudebox/source/lib/common.sh 2>/dev/null
 logo_header 2>/dev/null
 exec /bin/zsh
 EOF
@@ -77,7 +75,7 @@ EOF
         exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec tmux new-session /tmp/tmux-init.sh"
     else
         # For non-tmux, show logo before starting shell
-        exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && source /home/DOCKERUSER/.claudebox/scripts/lib/common.sh 2>/dev/null && logo_header 2>/dev/null; exec /bin/zsh"
+        exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && source /home/DOCKERUSER/.claudebox/source/lib/common.sh 2>/dev/null && logo_header 2>/dev/null; exec /bin/zsh"
     fi
 else
     # Claude mode - handle wrapper logic directly here

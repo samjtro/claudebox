@@ -52,7 +52,6 @@ logs/
 # Local environment
 .env
 .env.local
-CLAUDE.md
 
 # Test directories
 test_project/

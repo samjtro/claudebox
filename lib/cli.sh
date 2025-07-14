@@ -9,7 +9,7 @@
 # Four flag buckets (Bash 3.2 compatible - no associative arrays)
 readonly HOST_ONLY_FLAGS=(--verbose rebuild tmux)
 readonly CONTROL_FLAGS=(--enable-sudo --disable-firewall)
-readonly SCRIPT_COMMANDS=(shell create slot slots revoke profiles projects profile info help -h --help add remove install allowlist clean)
+readonly SCRIPT_COMMANDS=(shell create slot slots revoke profiles projects profile info help -h --help add remove install allowlist clean save open tmux)
 
 # parse_cli_args - Central CLI parsing with four-bucket architecture
 # Usage: parse_cli_args "$@"
@@ -72,19 +72,38 @@ process_host_flags() {
     done
 }
 
-# Check if current command requires Docker image
-requires_docker_image() {
+# Get command requirements - returns one of:
+# "none" - pure host command, no Docker or image needed
+# "image" - needs image name but not Docker running
+# "docker" - needs Docker running and will run container
+get_command_requirements() {
     local cmd="${1:-}"
     
-    # Commands that don't need Docker
     case "$cmd" in
-        profiles|projects|profile|add|remove|install|allowlist|info|help|-h|--help|slots|revoke|clean)
-            return 1  # false - doesn't need Docker
+        # Pure host commands - no Docker or image needed
+        profiles|projects|help|-h|--help|slots|create|revoke|clean|import|unlink)
+            echo "none"
             ;;
+        # Commands that need image name but not Docker
+        info|profile|add|remove|install|allowlist|save)
+            echo "image"
+            ;;
+        # Commands that need Docker and will run containers
+        shell|open|rebuild|update|config|mcp|migrate-installer|tmux|slot|"")
+            echo "docker"
+            ;;
+        # Unknown commands are forwarded to Claude in container
         *)
-            return 0  # true - needs Docker
+            echo "docker"
             ;;
     esac
+}
+
+# Legacy function for compatibility
+requires_docker_image() {
+    local cmd="${1:-}"
+    local req=$(get_command_requirements "$cmd")
+    [[ "$req" == "docker" ]]
 }
 
 # Check if current command requires a slot
@@ -114,4 +133,4 @@ debug_parsed_args() {
 }
 
 # Export all functions
-export -f parse_cli_args process_host_flags requires_docker_image requires_slot debug_parsed_args
+export -f parse_cli_args process_host_flags get_command_requirements requires_docker_image requires_slot debug_parsed_args

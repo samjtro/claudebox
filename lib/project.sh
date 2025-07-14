@@ -104,9 +104,14 @@ init_slot_dir() {
     mkdir -p "$dir/.claude"
     mkdir -p "$dir/.config"
     mkdir -p "$dir/.cache"
-    # Initialize .claude.json only if it doesn't exist
+    # Create empty .claude.json if it doesn't exist (for mounting)
     if [[ ! -f "$dir/.claude.json" ]]; then
         echo '{}' > "$dir/.claude.json"
+    fi
+    
+    # Create relative symlink to shared commands (works on host and in container)
+    if [[ ! -e "$dir/.claude/commands" ]]; then
+        ln -s ../../commands "$dir/.claude/commands"
     fi
 }
 
@@ -116,17 +121,22 @@ init_slot_dir() {
 # - Initialize directories and .claude.json
 create_container() {
     local path="$1" parent idx max name dir
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] create_container called with path: $path" >&2
     init_project_dir "$path"
     parent=$(get_parent_dir "$path")
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] parent dir: $parent" >&2
 
     # read max (no locking needed for single-user system)
     max=$(read_counter "$parent")
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] counter max: $max" >&2
 
     # attempt dead-slot reuse (starting from slot 1)
     for ((idx=1; idx<=max; idx++)); do
         name=$(generate_container_name "$path" "$idx")
         dir="$parent/$name"
+        [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] checking slot $idx: name=$name, dir=$dir" >&2
         if [[ ! -d "$dir" ]]; then
+            [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] slot $idx doesn't exist, creating it" >&2
             init_slot_dir "$dir"
             echo "$name"
             return
@@ -137,12 +147,14 @@ create_container() {
     idx=$((max + 1))
     name=$(generate_container_name "$path" "$idx")
     dir="$parent/$name"
+    [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] creating new slot $idx: name=$name, dir=$dir" >&2
     init_slot_dir "$dir"
     write_counter "$parent" $idx
     echo "$name"
 }
 
 # Determine next container to start (skipping running containers)
+# This is the old function that just finds any non-running slot
 determine_next_start_container() {
     local path="$1" parent max idx name dir
     parent=$(get_parent_dir "$path")
@@ -162,11 +174,62 @@ determine_next_start_container() {
     return 1
 }
 
+# Find the first authenticated and inactive slot
+find_ready_slot() {
+    local path="$1" parent max idx name dir
+    parent=$(get_parent_dir "$path")
+    max=$(read_counter "$parent")
+    
+    for ((idx=1; idx<=max; idx++)); do
+        name=$(generate_container_name "$path" "$idx")
+        dir="$parent/$name"
+        
+        # Skip non-existent slots
+        [ -d "$dir" ] || continue
+        
+        # Check if authenticated
+        [ -f "$dir/.claude/.credentials.json" ] || continue
+        
+        # Check if not running (inactive)
+        if ! docker ps --format "{{.Names}}" | grep -q "^claudebox-.*-${name}$"; then
+            echo "$name"
+            return 0
+        fi
+    done
+    
+    # No ready slots found
+    return 1
+}
+
+# Find any inactive slot (authenticated or not)
+find_inactive_slot() {
+    local path="$1" parent max idx name dir
+    parent=$(get_parent_dir "$path")
+    max=$(read_counter "$parent")
+    
+    for ((idx=1; idx<=max; idx++)); do
+        name=$(generate_container_name "$path" "$idx")
+        dir="$parent/$name"
+        
+        # Skip non-existent slots
+        [ -d "$dir" ] || continue
+        
+        # Check if not running (inactive)
+        if ! docker ps --format "{{.Names}}" | grep -q "^claudebox-.*-${name}$"; then
+            echo "$name"
+            return 0
+        fi
+    done
+    
+    # No inactive slots found
+    return 1
+}
+
 # ============================================================================
-# Legacy/Compatibility Functions (adapted for slot-based system)
+# Main Functions
 # ============================================================================
 
-# Get the project folder name - now returns the next available slot
+# Get the project folder name - returns the next available slot
 get_project_folder_name() {
     local path="$1"
     # First ensure project is initialized
@@ -329,50 +392,53 @@ list_project_slots() {
     fi
     
     echo "Commands:"
+    echo
     printf "  %-20s %s\n" "claudebox create" "Create new slot"
     printf "  %-20s %s\n" "claudebox slot <n>" "Launch specific slot"
     printf "  %-20s %s\n" "claudebox revoke" "Remove highest slot"
     printf "  %-20s %s\n" "claudebox revoke all" "Remove all unused slots"
     echo
     
-    echo "Legend: ✔️== authenticated 🔒 = not authenticcated"
-    echo "        💀 = removed | 🟢 = running 🔴 = not running"
-    echo
-    
     echo "Slots for $path:"
     echo
     
     # Header
-    printf "  %s %s  %-8s %-10s\n" " " " " "Slot" "Hash ID"
-    printf "  %s %s  %-8s %-10s\n" "──────  " "────" "────────"
+    printf "  Slot     Authentication       Status     Folder\n"
+    printf "  ────   ─────────────────     ─────────  ────────\n"
     
     for ((idx=1; idx<=max; idx++)); do
         local name=$(generate_container_name "$path" "$idx")
         local dir="$parent/$name"
-        local auth_icon="💀"  # Dead/removed
-        local run_icon="  "  # Empty space for alignment
+        local auth_icon="💀"
+        local auth_text="Removed"
+        local run_icon=""
+        local run_text="N/A"
         
         if [ -d "$dir" ]; then
             # Check authentication status
             if [ -f "$dir/.claude/.credentials.json" ]; then
-                auth_icon="✔️"   # Authenticated
+                auth_icon="✔️"
+                auth_text="Authenticated"
             else
-                auth_icon="🔒"  # Not authenticated
+                auth_icon="🔒"
+                auth_text="Unauthenticated"
             fi
             
             # Check if a container with this slot name is running
             if docker ps --format "{{.Names}}" | grep -q "^claudebox-.*-${name}$"; then
-                run_icon="🟢"  # Running
+                run_icon="🟢"
+                run_text="Active"
             else
-                run_icon="🔴"  # Not running
+                run_icon="🔴"
+                run_text="Inactive"
             fi
         fi
         
-        printf "  %s %s  Slot %-2d  %s\n" "$auth_icon" "$run_icon" "$idx" "$name"
+        # Format with 2-space indent
+        printf "   %-4s %s %-15s  %s  %-6s  %s\n" "$idx" "$auth_icon" "$auth_text" "$run_icon" "$run_text" "$name"
     done
     
     echo
-    echo "Total slots: $max"
     echo "Parent directory: $parent"
     echo
 }
@@ -409,7 +475,7 @@ export -f crc32_word crc32_string crc32_file
 export -f slugify_path generate_container_name generate_parent_folder_name get_parent_dir
 export -f init_project_dir init_slot_dir
 export -f read_counter write_counter
-export -f create_container determine_next_start_container
+export -f create_container determine_next_start_container find_ready_slot find_inactive_slot
 export -f get_project_folder_name get_image_name _get_project_slug
 export -f get_project_by_path list_all_projects resolve_project_path
 export -f list_project_slots get_slot_dir get_slot_index prune_slot_counter

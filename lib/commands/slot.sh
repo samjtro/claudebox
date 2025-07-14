@@ -5,9 +5,6 @@
 # Manages multiple container instances per project
 
 _cmd_create() {
-    cecho "Creating new container slot..." "$CYAN"
-    echo
-    
     # Debug: Check counter before creation
     local parent_dir=$(get_parent_dir "$PROJECT_DIR")
     local counter_before=$(read_counter "$parent_dir")
@@ -23,12 +20,7 @@ _cmd_create() {
     [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Created slot name: $slot_name" >&2
     [[ "$VERBOSE" == "true" ]] && echo "[DEBUG] Slot directory: $slot_dir" >&2
     
-    success "✓ Created slot: $slot_name"
-    echo
-    info "Slot directory: $slot_dir"
-    echo
-    
-    # Show updated slots list
+    # Show updated slots list directly
     list_project_slots "$PROJECT_DIR"
     
     return 0
@@ -66,9 +58,13 @@ _cmd_slot() {
     
     info "Using slot $slot_num: $slot_name"
     
+    # Now we need to run the container with the slot selected
+    # Get parent folder name for container naming
+    local parent_folder_name=$(generate_parent_folder_name "$PROJECT_DIR")
+    local container_name="claudebox-${parent_folder_name}-${slot_name}"
+    
     # Run container with remaining arguments passed to claude
-    run_claudebox_container "" "interactive" "$@"
-    exit 0
+    run_claudebox_container "$container_name" "interactive" "$@"
 }
 
 _cmd_revoke() {

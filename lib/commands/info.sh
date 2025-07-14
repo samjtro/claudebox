@@ -124,7 +124,7 @@ _cmd_info() {
                 echo "            - $(basename "$cmd_file" .md)"
             done
         fi
-        echo "   Project: $project_cmd_count command(s) (symlinked)"
+        echo "   Project: $project_cmd_count command(s) (shared)"
         if [[ $project_cmd_count -gt 0 ]] && [[ -e "$PROJECT_PARENT_DIR/commands" ]]; then
             for cmd_file in "$PROJECT_PARENT_DIR/commands"/*.md; do
                 [[ -f "$cmd_file" ]] || continue
@@ -133,7 +133,7 @@ _cmd_info() {
         fi
     else
         echo -e "   ${YELLOW}No custom commands found${NC}"
-        echo -e "   Location: ~/.claude/commands/ (host), project/.claudebox/commands/ (symlink)"
+        echo -e "   Location: ~/.claude/commands/ (host), project/commands/ (shared)"
     fi
     echo
 

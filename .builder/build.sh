@@ -23,6 +23,7 @@ tar -czf "$TEMP_ARCHIVE" \
   --exclude='.claude' \
   --exclude='.vscode' \
   --exclude='.idea' \
+  --exclude='.mcp.json' \
   --exclude='claudebox' \
   --exclude='test_project' \
   --exclude='test_new_project' \
@@ -30,7 +31,8 @@ tar -czf "$TEMP_ARCHIVE" \
   --exclude='*.swp' \
   --exclude='*~' \
   --exclude='archive.tar.gz' \
-  *
+  --exclude='*.tar.gz' \
+  .
 
 # Move to final location
 mv "$TEMP_ARCHIVE" "$ARCHIVE"
