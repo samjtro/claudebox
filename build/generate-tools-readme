@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Generate DEVELOPER_README.md for the current environment
+
+# Source the tools report module
+source /home/claude/.claudebox/source/claudebox/lib/tools-report.sh
+
+# Generate the report
+generate_tools_report
+
+# Show where the file was saved
+echo "DEVELOPER_README.md has been generated in ~/.claudebox/"
