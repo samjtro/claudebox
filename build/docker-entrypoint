@@ -54,8 +54,15 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
 fi
 
 # Create symlink to commands if they exist in .claudebox
-if [[ -d "/home/DOCKERUSER/.claudebox/commands" ]] && [[ ! -e "/home/DOCKERUSER/.claude/commands" ]]; then
-    ln -s "/home/DOCKERUSER/.claudebox/commands" "/home/DOCKERUSER/.claude/commands"
+if [[ -d "/home/DOCKERUSER/.claudebox/commands" ]]; then
+    # Remove broken symlink if it exists
+    if [[ -L "/home/DOCKERUSER/.claude/commands" ]] && [[ ! -e "/home/DOCKERUSER/.claude/commands" ]]; then
+        rm -f "/home/DOCKERUSER/.claude/commands"
+    fi
+    # Create symlink only if it doesn't exist
+    if [[ ! -e "/home/DOCKERUSER/.claude/commands" ]]; then
+        ln -s "/home/DOCKERUSER/.claudebox/commands" "/home/DOCKERUSER/.claude/commands"
+    fi
 fi
 
 # Generate DEVELOPER_README.md if profiles have changed
