@@ -41,9 +41,6 @@ if [[ -f "$HOME/.claudebox/default-flags" ]]; then
     while IFS= read -r flag; do
         [[ -n "$flag" ]] && DEFAULT_FLAGS+=("$flag")
     done < "$HOME/.claudebox/default-flags"
-    echo "[DEBUG] Script PID $$: Loaded ${#DEFAULT_FLAGS[@]} flags: ${DEFAULT_FLAGS[*]}" >&2
-else
-    echo "[DEBUG] Script PID $$: No default-flags file found at $HOME/.claudebox/default-flags" >&2
 fi
 
 # --------------------------------------------------------------- source libs --
@@ -65,7 +62,6 @@ main() {
     update_symlink
     
     # Step 2: Parse ALL arguments (already includes default flags)
-    echo "[DEBUG] In main() PID $$: Received ${#@} arguments: $*" >&2
     parse_cli_args "$@"
     
     # Step 3: Process host flags (sets VERBOSE, REBUILD, CLAUDEBOX_WRAP_TMUX)
@@ -417,6 +413,4 @@ LABEL claudebox.project=\"$project_folder_name\""
 
 # Run main with all arguments including default flags
 # Pass user arguments first, then DEFAULT_FLAGS
-echo "[DEBUG] Before calling main: DEFAULT_FLAGS has ${#DEFAULT_FLAGS[@]} elements: ${DEFAULT_FLAGS[*]}" >&2
-echo "[DEBUG] Before calling main: User args has $# elements: $*" >&2
 main "$@" "${DEFAULT_FLAGS[@]}"
