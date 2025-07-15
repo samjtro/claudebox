@@ -70,6 +70,22 @@ main() {
     # Step 4: Debug output if verbose
     debug_parsed_args
     
+    # Step 4a: Check if this command even needs Docker
+    local cmd_requirements="none"
+    if [[ -n "${CLI_SCRIPT_COMMAND}" ]]; then
+        cmd_requirements=$(get_command_requirements "${CLI_SCRIPT_COMMAND}")
+    else
+        # No script command means we're running claude - needs Docker
+        cmd_requirements="docker"
+    fi
+    
+    # If command doesn't need Docker, skip all Docker setup
+    if [[ "$cmd_requirements" == "none" ]]; then
+        # Dispatch the command directly and exit
+        dispatch_command "${CLI_SCRIPT_COMMAND}" "${CLI_CONTROL_FLAGS[@]}" "${CLI_PASS_THROUGH[@]}"
+        exit $?
+    fi
+    
     # Step 5: Docker checks
     local docker_status
     docker_status=$(check_docker; echo $?)
