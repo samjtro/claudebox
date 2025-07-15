@@ -36,11 +36,14 @@ export PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 export VERBOSE=false
 
 # Load saved default flags if they exist
-DEFAULT_FLAGS=()
+declare -a DEFAULT_FLAGS=()
 if [[ -f "$HOME/.claudebox/default-flags" ]]; then
     while IFS= read -r flag; do
         [[ -n "$flag" ]] && DEFAULT_FLAGS+=("$flag")
     done < "$HOME/.claudebox/default-flags"
+    echo "[DEBUG] Script PID $$: Loaded ${#DEFAULT_FLAGS[@]} flags: ${DEFAULT_FLAGS[*]}" >&2
+else
+    echo "[DEBUG] Script PID $$: No default-flags file found at $HOME/.claudebox/default-flags" >&2
 fi
 
 # --------------------------------------------------------------- source libs --
@@ -61,9 +64,9 @@ main() {
     # Step 1: Update symlink
     update_symlink
     
-    # Step 2: Parse ALL arguments (defaults + user args) ONCE
-    local all_args=("${DEFAULT_FLAGS[@]}" "$@")
-    parse_cli_args "${all_args[@]}"
+    # Step 2: Parse ALL arguments (already includes default flags)
+    echo "[DEBUG] In main() PID $$: Received ${#@} arguments: $*" >&2
+    parse_cli_args "$@"
     
     # Step 3: Process host flags (sets VERBOSE, REBUILD, CLAUDEBOX_WRAP_TMUX)
     process_host_flags
@@ -412,5 +415,8 @@ LABEL claudebox.project=\"$project_folder_name\""
     save_docker_layer_checksums "$PROJECT_DIR"
 }
 
-# Run main with all arguments
-main "$@"
+# Run main with all arguments including default flags
+# Pass user arguments first, then DEFAULT_FLAGS
+echo "[DEBUG] Before calling main: DEFAULT_FLAGS has ${#DEFAULT_FLAGS[@]} elements: ${DEFAULT_FLAGS[*]}" >&2
+echo "[DEBUG] Before calling main: User args has $# elements: $*" >&2
+main "$@" "${DEFAULT_FLAGS[@]}"
