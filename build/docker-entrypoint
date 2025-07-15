@@ -54,12 +54,8 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
 fi
 
 # Create symlink to commands if they exist in .claudebox
-if [[ -d "/home/DOCKERUSER/.claudebox/commands" ]]; then
-    # Remove any existing symlink or directory
-    if [[ -L "/home/DOCKERUSER/.claude/commands" ]] || [[ -e "/home/DOCKERUSER/.claude/commands" ]]; then
-        rm -rf "/home/DOCKERUSER/.claude/commands"
-    fi
-    # Create symlink with relative path
+if [[ -d "/home/DOCKERUSER/.claudebox/commands" ]] && [[ ! -L "/home/DOCKERUSER/.claude/commands" ]]; then
+    # Only create symlink if it doesn't exist as a symlink
     ln -s "../.claudebox/commands" "/home/DOCKERUSER/.claude/commands"
 fi
 
