@@ -62,6 +62,13 @@ if [ -d /home/DOCKERUSER/.claudebox/commands ]; then
     fi
 fi
 
+# Clear Statsig cache to prevent infinite recursion bug on first run
+# See: https://github.com/anthropics/claude-code/issues/1098
+# This happens when containers are created with mismatched cache
+if [ -d /home/DOCKERUSER/.claude/statsig ]; then
+    rm -rf /home/DOCKERUSER/.claude/statsig/statsig.cached.evaluations.* 2>/dev/null || true
+fi
+
 # Generate DEVELOPER_README.md if profiles have changed
 if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
     PROFILES_INI="/home/DOCKERUSER/.claudebox/profiles.ini"

@@ -342,8 +342,20 @@ main() {
                 fi
             done
             
+            if [[ "$VERBOSE" == "true" ]]; then
+                if [[ -t 0 ]]; then
+                    echo "[DEBUG] stdin IS a terminal" >&2
+                else
+                    echo "[DEBUG] stdin is NOT a terminal" >&2
+                fi
+                echo "[DEBUG] has_print_flag=$has_print_flag" >&2
+            fi
+            
             if [[ ! -t 0 ]] && [[ "$has_print_flag" == "false" ]]; then
                 # Add -p flag for piped input, but don't consume stdin
+                if [[ "$VERBOSE" == "true" ]]; then
+                    echo "[DEBUG] Adding -p flag for piped input" >&2
+                fi
                 run_claudebox_container "$container_name" "interactive" "${CLI_CONTROL_FLAGS[@]}" "-p" "${CLI_PASS_THROUGH[@]}"
             else
                 run_claudebox_container "$container_name" "interactive" "${CLI_CONTROL_FLAGS[@]}" "${CLI_PASS_THROUGH[@]}"

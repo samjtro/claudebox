@@ -143,10 +143,10 @@ _cmd_project() {
         # No need to change directories at all!
         if [[ $# -eq 0 ]]; then
             # No arguments - run interactive claude
-            PROJECT_DIR="$project_path" "$SCRIPT_PATH"
+            PROJECT_DIR="$project_path" exec "$SCRIPT_PATH"
         else
             # Pass through arguments
-            PROJECT_DIR="$project_path" "$SCRIPT_PATH" "$@"
+            PROJECT_DIR="$project_path" exec "$SCRIPT_PATH" "$@"
         fi
     else
         # Multiple matches - show them
