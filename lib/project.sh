@@ -6,16 +6,11 @@
 # CRC32 Functions
 # ============================================================================
 
-# Compute CRC-32 of a 32-bit word (big-endian or decimal input)
+# Compute CRC-32 of a string (for chaining)
 crc32_word() {
-    local val=$1 hex
-    if [[ $val =~ ^0[xX] ]]; then
-        hex=${val#0x}
-    else
-        printf -v hex '%08X' "$val"
-    fi
-    hex=$(printf '%08s' "$hex" | tr ' ' '0')
-    printf '%s' "$hex" | xxd -r -p | cksum | cut -d' ' -f1
+    local val=$1
+    # Simply hash the value as a string - no need for hex conversion
+    printf '%s' "$val" | cksum | cut -d' ' -f1
 }
 
 # Compute CRC-32 of an arbitrary string; returns decimal 0..2^32-1
