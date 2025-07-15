@@ -72,7 +72,6 @@ source "${COMMANDS_DIR}/system.sh"
 
 # Show menu when no slots exist
 show_no_slots_menu() {
-    echo
     logo_small
     echo
     cecho "No available slots found" "$YELLOW"
@@ -229,6 +228,7 @@ dispatch_command() {
         slots)            _cmd_slots "$@" ;;
         slot)             _cmd_slot "$@" ;;
         revoke)           _cmd_revoke "$@" ;;
+        kill)             _cmd_kill "$@" ;;
         
         # Info commands
         projects)         _cmd_projects "$@" ;;

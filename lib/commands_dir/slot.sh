@@ -211,4 +211,87 @@ _cmd_revoke() {
     return 0
 }
 
-export -f _cmd_create _cmd_slots _cmd_slot _cmd_revoke
+_cmd_kill() {
+    local target="${1:-}"
+    
+    # If no argument, show help
+    if [[ -z "$target" ]]; then
+        logo_small
+        echo
+        cecho "Kill running ClaudeBox containers:" "$CYAN"
+        echo
+        cecho "WARNING: This forcefully terminates containers!" "$YELLOW"
+        echo
+        
+        # Show running containers with their slot hashes
+        local found=false
+        local parent=$(get_parent_dir "$PROJECT_DIR")
+        local max=$(read_counter "$parent")
+        
+        echo "Running containers in this project:"
+        echo
+        for ((idx=1; idx<=max; idx++)); do
+            local name=$(generate_container_name "$PROJECT_DIR" "$idx")
+            local full_container="claudebox-$(basename "$parent")-${name}"
+            
+            if docker ps --format "{{.Names}}" | grep -q "^${full_container}$"; then
+                printf "  Slot %d: %s\n" "$idx" "$name"
+                found=true
+            fi
+        done
+        
+        if [[ "$found" == "false" ]]; then
+            info "No running containers found"
+        else
+            echo
+            cecho "Usage:" "$YELLOW"
+            echo "  claudebox kill <slot-hash>  # Kill specific container"
+            echo "  claudebox kill all          # Kill all containers"
+            echo
+            cecho "Example:" "$DIM"
+            echo "  claudebox kill 337503c6    # Kill container by slot hash"
+            echo "  claudebox kill all          # Kill all running containers"
+        fi
+        echo
+        return 0
+    fi
+    
+    # Kill all containers
+    if [[ "$target" == "all" ]]; then
+        local parent=$(get_parent_dir "$PROJECT_DIR")
+        local project_name=$(basename "$parent")
+        local containers=$(docker ps --format "{{.Names}}" | grep "^claudebox-${project_name}-" || true)
+        
+        if [[ -z "$containers" ]]; then
+            info "No running containers to kill"
+            echo
+            return 0
+        fi
+        
+        warn "Killing all containers for this project..."
+        echo "$containers" | while IFS= read -r container; do
+            echo "  Killing: $container"
+            docker kill "$container" >/dev/null 2>&1 || true
+        done
+        success "All containers killed"
+        echo
+        return 0
+    fi
+    
+    # Kill specific container by slot hash
+    local parent=$(get_parent_dir "$PROJECT_DIR")
+    local project_name=$(basename "$parent")
+    local full_container="claudebox-${project_name}-${target}"
+    
+    if docker ps --format "{{.Names}}" | grep -q "^${full_container}$"; then
+        warn "Killing container: $full_container"
+        docker kill "$full_container" >/dev/null 2>&1 || error "Failed to kill container"
+        success "Container killed"
+    else
+        error "Container not found: $target"
+        echo "Run 'claudebox kill' to see running containers"
+    fi
+    echo
+}
+
+export -f _cmd_create _cmd_slots _cmd_slot _cmd_revoke _cmd_kill

@@ -53,6 +53,8 @@ generate_container_name() {
 generate_parent_folder_name() {
     local path="$1"
     local slug; slug=$(slugify_path "$path")
+    # Convert to lowercase for Docker compatibility
+    slug=$(echo "$slug" | tr '[:upper:]' '[:lower:]')
     local base_crc; base_crc=$(crc32_string "$path")
     printf '%s_%08x' "$slug" "$base_crc"
 }

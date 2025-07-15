@@ -62,11 +62,16 @@ if [ -d /home/DOCKERUSER/.claudebox/commands ]; then
     fi
 fi
 
-# Clear Statsig cache to prevent infinite recursion bug on first run
+# Clear Statsig cache on first run only to prevent infinite recursion bug
 # See: https://github.com/anthropics/claude-code/issues/1098
 # This happens when containers are created with mismatched cache
-if [ -d /home/DOCKERUSER/.claude/statsig ]; then
+if [ ! -f /home/DOCKERUSER/.claude/.initialized ] && [ -d /home/DOCKERUSER/.claude/statsig ]; then
     rm -rf /home/DOCKERUSER/.claude/statsig/statsig.cached.evaluations.* 2>/dev/null || true
+fi
+
+# Mark container as initialized after first successful startup
+if [ ! -f /home/DOCKERUSER/.claude/.initialized ]; then
+    touch /home/DOCKERUSER/.claude/.initialized
 fi
 
 # Generate DEVELOPER_README.md if profiles have changed

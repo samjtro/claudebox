@@ -9,7 +9,7 @@
 # Four flag buckets (Bash 3.2 compatible - no associative arrays)
 readonly HOST_ONLY_FLAGS=(--verbose rebuild tmux)
 readonly CONTROL_FLAGS=(--enable-sudo --disable-firewall)
-readonly SCRIPT_COMMANDS=(shell create slot slots revoke profiles projects profile info help -h --help add remove install allowlist clean save project tmux)
+readonly SCRIPT_COMMANDS=(shell create slot slots revoke profiles projects profile info help -h --help add remove install allowlist clean save project tmux kill)
 
 # parse_cli_args - Central CLI parsing with four-bucket architecture
 # Usage: parse_cli_args "$@"
@@ -81,7 +81,7 @@ get_command_requirements() {
     
     case "$cmd" in
         # Pure host commands - no Docker or image needed
-        profiles|projects|help|-h|--help|slots|create|revoke|clean|import|unlink)
+        profiles|projects|help|-h|--help|slots|create|revoke|clean|import|unlink|kill)
             echo "none"
             ;;
         # Commands that need image name but not Docker

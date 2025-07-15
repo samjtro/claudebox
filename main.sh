@@ -35,13 +35,7 @@ export PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 # Initialize VERBOSE to false (will be set properly by CLI parser)
 export VERBOSE=false
 
-# Load saved default flags if they exist
-declare -a DEFAULT_FLAGS=()
-if [[ -f "$HOME/.claudebox/default-flags" ]]; then
-    while IFS= read -r flag; do
-        [[ -n "$flag" ]] && DEFAULT_FLAGS+=("$flag")
-    done < "$HOME/.claudebox/default-flags"
-fi
+# Note: Default flags are loaded later, only when running Claude interactively
 
 # --------------------------------------------------------------- source libs --
 # LIB_DIR is always relative to where the script is located
@@ -55,17 +49,40 @@ done
 
 # -------------------------------------------------------------------- main() --
 main() {
+    # Save original arguments for later use with saved flags
+    local original_args=("$@")
+    
     # Enable BuildKit for all Docker operations
     export DOCKER_BUILDKIT=1
     
     # Step 1: Update symlink
     update_symlink
     
-    # Step 2: Parse ALL arguments (already includes default flags)
+    # Step 2: Parse ALL arguments
     parse_cli_args "$@"
     
     # Step 3: Process host flags (sets VERBOSE, REBUILD, CLAUDEBOX_WRAP_TMUX)
     process_host_flags
+    
+    # Step 3a: Load saved flags if not running 'save' command
+    if [[ "${CLI_SCRIPT_COMMAND}" != "save" ]]; then
+        if [[ -f "$HOME/.claudebox/default-flags" ]]; then
+            local saved_flags=()
+            while IFS= read -r flag; do
+                [[ -n "$flag" ]] && saved_flags+=("$flag")
+            done < "$HOME/.claudebox/default-flags"
+            
+            if [[ ${#saved_flags[@]} -gt 0 ]]; then
+                # Re-parse with saved flags APPENDED to original args
+                parse_cli_args "${original_args[@]}" "${saved_flags[@]}"
+                process_host_flags
+                
+                if [[ "$VERBOSE" == "true" ]]; then
+                    echo "[DEBUG] Loaded saved flags: ${saved_flags[*]}" >&2
+                fi
+            fi
+        fi
+    fi
     
     # Step 4: Debug output if verbose
     debug_parsed_args
@@ -319,7 +336,8 @@ main() {
         dispatch_command "${CLI_SCRIPT_COMMAND}" "${CLI_CONTROL_FLAGS[@]}" "${CLI_PASS_THROUGH[@]}"
         exit $?
     else
-        # No script command - run container with control flags + pass-through
+        # No script command - running Claude interactively
+        # This is where we load saved default flags
         if [[ -n "${PROJECT_CLAUDEBOX_DIR:-}" ]]; then
             local slot_name=$(basename "$PROJECT_CLAUDEBOX_DIR")
             # parent_folder_name already set in step 8
@@ -330,6 +348,29 @@ main() {
                 echo "[DEBUG] slot_name=$slot_name" >&2
                 echo "[DEBUG] parent_folder_name=$parent_folder_name" >&2
                 echo "[DEBUG] container_name=$container_name" >&2
+            fi
+            
+            # Load saved default flags ONLY for interactive Claude (no command)
+            local saved_flags=()
+            if [[ -f "$HOME/.claudebox/default-flags" ]]; then
+                while IFS= read -r flag; do
+                    [[ -n "$flag" ]] && saved_flags+=("$flag")
+                done < "$HOME/.claudebox/default-flags"
+                
+                # Re-parse all arguments with saved flags included
+                if [[ ${#saved_flags[@]} -gt 0 ]]; then
+                    # Combine original args with saved flags
+                    local all_args=("${original_args[@]}" "${saved_flags[@]}")
+                    
+                    # Re-parse to properly sort flags
+                    parse_cli_args "${all_args[@]}"
+                    process_host_flags
+                    
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        echo "[DEBUG] Re-parsed with saved flags" >&2
+                        debug_parsed_args
+                    fi
+                fi
             fi
             
             # Check if stdin is not a terminal (i.e., we're receiving piped input)
@@ -352,11 +393,13 @@ main() {
             fi
             
             if [[ ! -t 0 ]] && [[ "$has_print_flag" == "false" ]]; then
-                # Add -p flag for piped input, but don't consume stdin
+                # Read piped input and pass as argument to -p
                 if [[ "$VERBOSE" == "true" ]]; then
-                    echo "[DEBUG] Adding -p flag for piped input" >&2
+                    echo "[DEBUG] Reading piped input for -p flag" >&2
                 fi
-                run_claudebox_container "$container_name" "interactive" "${CLI_CONTROL_FLAGS[@]}" "-p" "${CLI_PASS_THROUGH[@]}"
+                local piped_input
+                piped_input=$(cat)
+                run_claudebox_container "$container_name" "interactive" "${CLI_CONTROL_FLAGS[@]}" "-p" "$piped_input" "${CLI_PASS_THROUGH[@]}"
             else
                 run_claudebox_container "$container_name" "interactive" "${CLI_CONTROL_FLAGS[@]}" "${CLI_PASS_THROUGH[@]}"
             fi
@@ -439,6 +482,5 @@ LABEL claudebox.project=\"$project_folder_name\""
     save_docker_layer_checksums "$PROJECT_DIR"
 }
 
-# Run main with all arguments including default flags
-# Pass user arguments first, then DEFAULT_FLAGS
-main "$@" "${DEFAULT_FLAGS[@]}"
+# Run main with user arguments only
+main "$@"

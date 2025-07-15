@@ -147,6 +147,8 @@ _cmd_clean() {
             exit 0
             ;;
         *)
+            logo_small
+            echo
             cecho "ClaudeBox Clean Options:" "$CYAN"
             echo
             echo -e "  ${GREEN}clean docker${NC}             Remove all Docker resources"
@@ -158,6 +160,7 @@ _cmd_clean() {
             echo "  claudebox clean project     # Clean current project"
             echo "  claudebox clean project abc # Clean project 'abc'"
             echo "  claudebox clean projects    # Clean all projects"
+            echo
             exit 0
             ;;
     esac
