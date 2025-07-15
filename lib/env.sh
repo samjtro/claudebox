@@ -2,7 +2,7 @@
 # All immutable or rarely‑changing environment variables live here.
 
 # Configuration
-DEFAULT_FLAGS=()
+# DEFAULT_FLAGS is loaded from file in main.sh, don't reset it here
 
 # Docker and user settings
 readonly DOCKER_USER="claude"

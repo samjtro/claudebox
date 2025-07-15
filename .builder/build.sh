@@ -5,7 +5,7 @@
 set -euo pipefail
 
 TEMPLATE=".builder/script_template_root.sh"
-OUTPUT="claudebox"  # Changed from claudebox.run.sh
+OUTPUT="claudebox.run"
 ARCHIVE="archive.tar.gz"
 
 # Create archive in temp location to avoid "file changed as we read it" error
@@ -18,16 +18,11 @@ tar -czf "$TEMP_ARCHIVE" \
   --exclude='.gitignore' \
   --exclude='.github' \
   --exclude='.builder' \
-  --exclude='.bmad-core' \
-  --exclude='.bmad_core' \
   --exclude='.claude' \
   --exclude='.vscode' \
   --exclude='.idea' \
   --exclude='.mcp.json' \
-  --exclude='claudebox' \
-  --exclude='test_project' \
-  --exclude='test_new_project' \
-  --exclude='test-project' \
+  --exclude='claudebox.run' \
   --exclude='*.swp' \
   --exclude='*~' \
   --exclude='archive.tar.gz' \

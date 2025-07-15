@@ -98,12 +98,12 @@ _cmd_tmux() {
     exit 0
 }
 
-_cmd_open() {
+_cmd_project() {
     local search="${1:-}"
     shift || true
     
     if [[ -z "$search" ]]; then
-        error "Usage: claudebox open <project-name> [command...]\nExample: claudebox open myproject\nExample: claudebox open cc618e36 shell"
+        error "Usage: claudebox project <project-name> [command...]\nExample: claudebox project myproject\nExample: claudebox project cc618e36 shell"
     fi
     
     # Convert search to lowercase for case-insensitive matching
@@ -363,4 +363,4 @@ _install_tmux_conf() {
     fi
 }
 
-export -f _cmd_save _cmd_unlink _cmd_rebuild _cmd_tmux _cmd_open _cmd_special _cmd_import _install_tmux_conf
+export -f _cmd_save _cmd_unlink _cmd_rebuild _cmd_tmux _cmd_project _cmd_special _cmd_import _install_tmux_conf

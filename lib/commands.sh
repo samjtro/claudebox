@@ -5,7 +5,7 @@
 # All command implementations are organized into logical modules below.
 
 # Get the commands subdirectory path
-COMMANDS_DIR="${LIB_DIR}/commands"
+COMMANDS_DIR="${LIB_DIR}/commands_dir"
 
 # ============================================================================
 # CORE COMMANDS - Essential ClaudeBox operations
@@ -58,12 +58,12 @@ source "${COMMANDS_DIR}/clean.sh"
 # ============================================================================
 # SYSTEM COMMANDS - System utilities and special features
 # ============================================================================
-# Commands: save, unlink, rebuild, tmux, open
+# Commands: save, unlink, rebuild, tmux, project
 # - save: Saves default command-line flags
 # - unlink: Removes the claudebox symlink
 # - rebuild: Forces a Docker image rebuild
 # - tmux: Launches ClaudeBox with tmux support
-# - open: Opens a project by name from anywhere
+# - project: Opens a project by name from anywhere
 source "${COMMANDS_DIR}/system.sh"
 
 # ============================================================================
@@ -130,7 +130,7 @@ show_help() {
   create                          Create new authenticated container slot
   slots                           List all container slots
   slot <number>                   Launch a specific container slot
-  open <project>                  Open project by name/hash from anywhere
+  project <name>                  Open project by name/hash from anywhere
   tmux                            Launch ClaudeBox with tmux support enabled"
     
     if [[ -n "${IMAGE_NAME:-}" ]] && docker image inspect "$IMAGE_NAME" &>/dev/null; then
@@ -161,7 +161,7 @@ show_help() {
   create                          Create new authenticated container slot\
   slots                           List all container slots\
   slot <number>                   Launch a specific container slot\
-  open <project>                  Open project by name/hash from anywhere\
+  project <name>                  Open project by name/hash from anywhere\
   tmux                            Launch ClaudeBox with tmux support enabled')
         
         # Output everything at once
@@ -245,7 +245,7 @@ dispatch_command() {
         unlink)           _cmd_unlink "$@" ;;
         rebuild)          _cmd_rebuild "$@" ;;
         tmux)             _cmd_tmux "$@" ;;
-        open)             _cmd_open "$@" ;;
+        project)          _cmd_project "$@" ;;
         import)           _cmd_import "$@" ;;
         
         # Special commands that modify container

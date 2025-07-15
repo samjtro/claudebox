@@ -9,7 +9,7 @@
 # Four flag buckets (Bash 3.2 compatible - no associative arrays)
 readonly HOST_ONLY_FLAGS=(--verbose rebuild tmux)
 readonly CONTROL_FLAGS=(--enable-sudo --disable-firewall)
-readonly SCRIPT_COMMANDS=(shell create slot slots revoke profiles projects profile info help -h --help add remove install allowlist clean save open tmux)
+readonly SCRIPT_COMMANDS=(shell create slot slots revoke profiles projects profile info help -h --help add remove install allowlist clean save project tmux)
 
 # parse_cli_args - Central CLI parsing with four-bucket architecture
 # Usage: parse_cli_args "$@"
@@ -89,7 +89,7 @@ get_command_requirements() {
             echo "image"
             ;;
         # Commands that need Docker and will run containers
-        shell|open|rebuild|update|config|mcp|migrate-installer|tmux|slot|"")
+        shell|project|rebuild|update|config|mcp|migrate-installer|tmux|slot|"")
             echo "docker"
             ;;
         # Unknown commands are forwarded to Claude in container
