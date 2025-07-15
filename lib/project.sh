@@ -108,11 +108,6 @@ init_slot_dir() {
     if [[ ! -f "$dir/.claude.json" ]]; then
         echo '{}' > "$dir/.claude.json"
     fi
-    
-    # Create relative symlink to shared commands (works on host and in container)
-    if [[ ! -e "$dir/.claude/commands" ]]; then
-        ln -s ../../commands "$dir/.claude/commands"
-    fi
 }
 
 # Create or reuse a container slot:
