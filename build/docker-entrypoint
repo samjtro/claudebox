@@ -53,26 +53,7 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
     fi
 fi
 
-# Create symlink from ~/.claude/commands to ~/.claudebox/commands
-# The ~/.claudebox folder is mounted from the host
-if [ -d /home/DOCKERUSER/.claudebox/commands ]; then
-    if [ ! -e /home/DOCKERUSER/.claude/commands ]; then
-        mkdir -p /home/DOCKERUSER/.claude
-        ln -s /home/DOCKERUSER/.claudebox/commands /home/DOCKERUSER/.claude/commands
-    fi
-fi
-
-# Clear Statsig cache on first run only to prevent infinite recursion bug
-# See: https://github.com/anthropics/claude-code/issues/1098
-# This happens when containers are created with mismatched cache
-if [ ! -f /home/DOCKERUSER/.claude/.initialized ] && [ -d /home/DOCKERUSER/.claude/statsig ]; then
-    rm -rf /home/DOCKERUSER/.claude/statsig/statsig.cached.evaluations.* 2>/dev/null || true
-fi
-
-# Mark container as initialized after first successful startup
-if [ ! -f /home/DOCKERUSER/.claude/.initialized ]; then
-    touch /home/DOCKERUSER/.claude/.initialized
-fi
+# Symlink creation will be handled after user switch
 
 # Generate DEVELOPER_README.md if profiles have changed
 if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
@@ -119,6 +100,8 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
 fi
 
 cd /home/DOCKERUSER
+
+# No need for complex exit handlers - just copy after claude exits
 
 if [[ "${SHELL_MODE:-false}" == "true" ]]; then
     # Use runuser to avoid PTY signal handling issues
@@ -188,21 +171,70 @@ else
                 echo "Warning: NVM not found at $NVM_DIR" >&2
             fi
             
+            
+            # Create symlink from ~/.claude/commands to ~/.claudebox/commands
+            # The ~/.claudebox folder is mounted from the host
+            if [ -d "$HOME/.claudebox/commands" ]; then
+                if [ ! -e "$HOME/.claude/commands" ]; then
+                    ln -s "$HOME/.claudebox/commands" "$HOME/.claude/commands"
+                fi
+            fi
+            
             cd /workspace
+            
+            # Check if .claude/projects exists and filter out -c/--continue if not
+            if [[ ! -d "$HOME/.claude/projects" ]]; then
+                # Filter out -c and --continue flags
+                filtered_args=()
+                skip_next=false
+                for arg in "$@"; do
+                    if [[ "$skip_next" == "true" ]]; then
+                        skip_next=false
+                        continue
+                    fi
+                    
+                    case "$arg" in
+                        -c|--continue)
+                            # Skip this flag
+                            ;;
+                        *)
+                            filtered_args+=("$arg")
+                            ;;
+                    esac
+                done
+                
+                # Update positional parameters
+                set -- "${filtered_args[@]}"
+            fi
             
             # If no arguments and stdin is a terminal, run claude in interactive mode
             if [[ "${CLAUDEBOX_WRAP_TMUX:-false}" == "true" ]]; then
                 if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
-                    exec tmux new-session claude
+                    tmux new-session claude
                 else
-                    exec tmux new-session claude "$@"
+                    tmux new-session claude "$@"
                 fi
             else
                 if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
-                    exec claude
+                    # No arguments - check if in tmux
+                    if [[ -n "${TMUX:-}" ]]; then
+                        claude /tmux
+                    else
+                        claude
+                    fi
                 else
-                    exec claude "$@"
+                    # Has arguments - check if in tmux
+                    if [[ -n "${TMUX:-}" ]]; then
+                        claude "$@" /tmux
+                    else
+                        claude "$@"
+                    fi
                 fi
+            fi
+            
+            # After claude exits, copy .claude.json if it was created
+            if [[ -f "$HOME/.claude.json" ]] && [[ ! -f "$HOME/.claudebox/${CLAUDEBOX_SLOT_NAME}/.claude.json" ]]; then
+                cp "$HOME/.claude.json" "$HOME/.claudebox/${CLAUDEBOX_SLOT_NAME}/.claude.json"
             fi
         ' -- "$@"
     fi

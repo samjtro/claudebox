@@ -183,7 +183,7 @@ _clean_project() {
             # Skip profiles.ini and other project-level files
             if [[ "$slot_name" =~ ^[a-f0-9]{8}$ ]]; then
                 rm -rf "$slot_dir"
-                ((slots_removed++))
+                ((slots_removed++)) || true
             fi
         fi
     done

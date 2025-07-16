@@ -109,9 +109,9 @@ show_help() {
     local footer="${2:-}"
     
     # Our additional options to inject
-    local our_options="  --verbose                       Show detailed output
-  --enable-sudo                   Enable sudo without password
-  --disable-firewall              Disable network restrictions"
+    local our_options="  --verbose                        Show detailed output
+  --enable-sudo                    Enable sudo without password
+  --disable-firewall               Disable network restrictions"
     
     # Our additional commands to append
     local our_commands="  profiles                        List all available profiles
@@ -140,9 +140,9 @@ show_help() {
         local full_help=$(echo "$claude_help" | \
             sed '1s/claude/claudebox/g' | \
             sed '/^Commands:/i\
-  --verbose                       Show detailed output\
-  --enable-sudo                   Enable sudo without password\
-  --disable-firewall              Disable network restrictions\
+  --verbose                        Show detailed output\
+  --enable-sudo                    Enable sudo without password\
+  --disable-firewall               Disable network restrictions\
 ' | \
             sed '$ a\
   profiles                        List all available profiles\
@@ -247,6 +247,7 @@ dispatch_command() {
         tmux)             _cmd_tmux "$@" ;;
         project)          _cmd_project "$@" ;;
         import)           _cmd_import "$@" ;;
+        kill)             _cmd_kill "$@" ;;
         
         # Special commands that modify container
         config|mcp|migrate-installer) 

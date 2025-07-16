@@ -101,10 +101,7 @@ init_slot_dir() {
     mkdir -p "$dir/.claude"
     mkdir -p "$dir/.config"
     mkdir -p "$dir/.cache"
-    # Create empty .claude.json if it doesn't exist (for mounting)
-    if [[ ! -f "$dir/.claude.json" ]]; then
-        echo '{}' > "$dir/.claude.json"
-    fi
+    # Don't pre-create .claude.json - let Claude create it naturally
 }
 
 # Create or reuse a container slot:

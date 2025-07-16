@@ -229,11 +229,10 @@ run_claudebox_container() {
     
     docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude)
     
-    # Ensure .claude.json exists for mounting
-    if [[ ! -f "$PROJECT_CLAUDEBOX_DIR/.claude.json" ]]; then
-        echo '{}' > "$PROJECT_CLAUDEBOX_DIR/.claude.json"
+    # Mount .claude.json only if it already exists (from previous session)
+    if [[ -f "$PROJECT_CLAUDEBOX_DIR/.claude.json" ]]; then
+        docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json)
     fi
-    docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json)
     
     # Mount .config directory
     docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config)
@@ -270,6 +269,7 @@ run_claudebox_container() {
         -e "TERM=${TERM:-xterm-256color}"
         -e "VERBOSE=${VERBOSE:-false}"
         -e "CLAUDEBOX_WRAP_TMUX=${CLAUDEBOX_WRAP_TMUX:-false}"
+        -e "CLAUDEBOX_PANE_NAME=${CLAUDEBOX_PANE_NAME:-}"
         --cap-add NET_ADMIN
         --cap-add NET_RAW
         "$IMAGE_NAME"

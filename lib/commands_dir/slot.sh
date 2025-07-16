@@ -59,6 +59,7 @@ _cmd_slot() {
     export PROJECT_CLAUDEBOX_DIR="$slot_dir"
     export PROJECT_PARENT_DIR="$parent_dir"
     export IMAGE_NAME=$(get_image_name)
+    export CLAUDEBOX_SLOT_NUMBER="$slot_num"
     
     info "Using slot $slot_num: $slot_name"
     

@@ -42,7 +42,7 @@ export VERBOSE=false
 LIB_DIR="${SCRIPT_DIR}/lib"
 
 # Load libraries in order - cli.sh must be loaded first for parsing
-for lib in cli common env os state project docker config commands welcome; do
+for lib in cli common env os state project docker config commands welcome preflight; do
     # shellcheck disable=SC1090
     source "${LIB_DIR}/${lib}.sh"
 done
@@ -64,25 +64,35 @@ main() {
     # Step 3: Process host flags (sets VERBOSE, REBUILD, CLAUDEBOX_WRAP_TMUX)
     process_host_flags
     
-    # Step 3a: Load saved flags if not running 'save' command
-    if [[ "${CLI_SCRIPT_COMMAND}" != "save" ]]; then
-        if [[ -f "$HOME/.claudebox/default-flags" ]]; then
-            local saved_flags=()
-            while IFS= read -r flag; do
-                [[ -n "$flag" ]] && saved_flags+=("$flag")
-            done < "$HOME/.claudebox/default-flags"
-            
-            if [[ ${#saved_flags[@]} -gt 0 ]]; then
-                # Re-parse with saved flags APPENDED to original args
-                parse_cli_args "${original_args[@]}" "${saved_flags[@]}"
-                process_host_flags
+    # Step 3a: Handle saved flags based on the first CLI argument
+    local first_arg="${original_args[0]:-}"
+    
+    # Check if first arg is a command (no dash) that should skip saved flags
+    case "$first_arg" in
+        save|clean|kill)
+            # These commands don't get saved flags at all
+            ;;
+        *)
+            # Load and apply saved flags
+            if [[ -f "$HOME/.claudebox/default-flags" ]]; then
+                local saved_flags=()
+                while IFS= read -r flag; do
+                    [[ -n "$flag" ]] && saved_flags+=("$flag")
+                done < "$HOME/.claudebox/default-flags"
                 
-                if [[ "$VERBOSE" == "true" ]]; then
-                    echo "[DEBUG] Loaded saved flags: ${saved_flags[*]}" >&2
+                if [[ ${#saved_flags[@]} -gt 0 ]]; then
+                    # Re-parse WITH saved flags, but the command structure is preserved
+                    # because the command was already identified from original args
+                    parse_cli_args "${original_args[@]}" "${saved_flags[@]}"
+                    process_host_flags
+                    
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        echo "[DEBUG] Loaded saved flags: ${saved_flags[*]}" >&2
+                    fi
                 fi
             fi
-        fi
-    fi
+            ;;
+    esac
     
     # Step 4: Debug output if verbose
     debug_parsed_args
@@ -90,7 +100,9 @@ main() {
     # Step 4a: Check if this command even needs Docker
     local cmd_requirements="none"
     if [[ -n "${CLI_SCRIPT_COMMAND}" ]]; then
-        cmd_requirements=$(get_command_requirements "${CLI_SCRIPT_COMMAND}")
+        # Pass the first pass-through arg as potential subcommand
+        local first_arg="${CLI_PASS_THROUGH[0]:-}"
+        cmd_requirements=$(get_command_requirements "${CLI_SCRIPT_COMMAND}" "$first_arg")
     else
         # No script command means we're running claude - needs Docker
         cmd_requirements="docker"
@@ -99,7 +111,7 @@ main() {
     # If command doesn't need Docker, skip all Docker setup
     if [[ "$cmd_requirements" == "none" ]]; then
         # Dispatch the command directly and exit
-        dispatch_command "${CLI_SCRIPT_COMMAND}" "${CLI_CONTROL_FLAGS[@]}" "${CLI_PASS_THROUGH[@]}"
+        dispatch_command "${CLI_SCRIPT_COMMAND}" "${CLI_PASS_THROUGH[@]}" "${CLI_CONTROL_FLAGS[@]}"
         exit $?
     fi
     
@@ -209,6 +221,12 @@ main() {
     # Get the slot to use (might be empty)
     project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
     
+    # Early exit if command needs Docker but no slots exist
+    if [[ "$project_folder_name" == "NONE" ]] && [[ "$cmd_requirements" == "docker" ]]; then
+        show_no_slots_menu
+        exit 1
+    fi
+    
     # Always set IMAGE_NAME based on parent folder
     IMAGE_NAME=$(get_image_name)
     export IMAGE_NAME
@@ -226,28 +244,25 @@ main() {
         docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
     fi
     
-    # Step 9: Handle commands that need slots but don't have them
-    if [[ -z "$project_folder_name" ]] || [[ "$project_folder_name" == "NONE" ]]; then
-        # Check if this command actually needs a slot
-        case "${CLI_SCRIPT_COMMAND}" in
-            shell|update|config|mcp|migrate-installer|"")
-                # These commands need a slot
-                show_no_slots_menu
-                exit 0
-                ;;
-            help|-h|--help)
-                show_help
-                exit 0
-                ;;
-            # All other commands (like open, create, etc) can proceed without a slot
-        esac
+    # Step 9: Run pre-flight validation for commands that need Docker
+    if [[ -n "${CLI_SCRIPT_COMMAND}" ]]; then
+        local cmd_req=$(get_command_requirements "${CLI_SCRIPT_COMMAND}")
+        # Only run pre-flight for commands that need Docker or image
+        if [[ "$cmd_req" == "docker" ]] || [[ "$cmd_req" == "image" ]]; then
+            if ! preflight_check "${CLI_SCRIPT_COMMAND}" "${CLI_PASS_THROUGH[@]}"; then
+                # Pre-flight check failed and printed error
+                exit 1
+            fi
+        fi
     fi
     
     # Step 10: Check command requirements
     local cmd_requirements="none"
     
     if [[ -n "${CLI_SCRIPT_COMMAND}" ]]; then
-        cmd_requirements=$(get_command_requirements "${CLI_SCRIPT_COMMAND}")
+        # Pass the first pass-through arg as potential subcommand
+        local first_arg="${CLI_PASS_THROUGH[0]:-}"
+        cmd_requirements=$(get_command_requirements "${CLI_SCRIPT_COMMAND}" "$first_arg")
     else
         # No script command means we're running claude - needs Docker
         cmd_requirements="docker"
@@ -333,7 +348,7 @@ main() {
     if [[ -n "${CLI_SCRIPT_COMMAND}" ]]; then
         # Script command - dispatch on host
         # Pass control flags and pass-through args to dispatch_command
-        dispatch_command "${CLI_SCRIPT_COMMAND}" "${CLI_CONTROL_FLAGS[@]}" "${CLI_PASS_THROUGH[@]}"
+        dispatch_command "${CLI_SCRIPT_COMMAND}" "${CLI_PASS_THROUGH[@]}" "${CLI_CONTROL_FLAGS[@]}"
         exit $?
     else
         # No script command - running Claude interactively
@@ -404,7 +419,7 @@ main() {
                 run_claudebox_container "$container_name" "interactive" "${CLI_CONTROL_FLAGS[@]}" "${CLI_PASS_THROUGH[@]}"
             fi
         else
-            error "No command specified and no slot available"
+            show_no_slots_menu
         fi
     fi
 }
