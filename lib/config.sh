@@ -30,7 +30,7 @@ get_profile_packages() {
         database) echo "postgresql-client mysql-client sqlite3 redis-tools mongodb-clients" ;;
         devops) echo "docker.io docker-compose kubectl helm terraform ansible awscli" ;;
         web) echo "nginx apache2-utils httpie" ;;
-        embedded) echo "gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen platformio" ;;
+        embedded) echo "gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen" ;;
         datascience) echo "r-base" ;;
         security) echo "nmap tcpdump wireshark-common netcat-openbsd john hashcat hydra" ;;
         ml) echo "" ;;  # Just cmake needed, comes from build-tools now
@@ -304,10 +304,12 @@ get_profile_web() {
 }
 
 get_profile_embedded() {
-    local packages=$(get_profile_packages "embedded")
-    if [[ -n "$packages" ]]; then
-        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
-    fi
+    # Remove platformio from apt packages - it's installed via pip
+    local packages="gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen"
+    cat << 'EOF'
+RUN apt-get update && apt-get install -y gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen python3-pip && apt-get clean
+RUN pip3 install platformio
+EOF
 }
 
 get_profile_datascience() {
