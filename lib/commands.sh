@@ -108,12 +108,7 @@ show_help() {
     local message="${1:-}"
     local footer="${2:-}"
     
-    # Our additional options to inject
-    local our_options="  --verbose                        Show detailed output
-  --enable-sudo                    Enable sudo without password
-  --disable-firewall               Disable network restrictions"
-    
-    # Our additional commands to append
+    # ClaudeBox specific commands
     local our_commands="  profiles                        List all available profiles
   projects                        List all projects with paths
   add <profiles...>               Add development profiles
@@ -132,6 +127,84 @@ show_help() {
   project <name>                  Open project by name/hash from anywhere
   tmux                            Launch ClaudeBox with tmux support enabled"
     
+    # Check if we're in a project directory
+    local project_folder_name
+    project_folder_name=$(get_project_folder_name "$PROJECT_DIR" 2>/dev/null || echo "NONE")
+    
+    if [[ "$project_folder_name" != "NONE" ]] && [[ -n "${IMAGE_NAME:-}" ]] && docker image inspect "$IMAGE_NAME" &>/dev/null; then
+        # In project directory with Docker image - show brief ClaudeBox help and note about Claude commands
+        echo
+        logo_small
+        echo
+        echo "Usage: claudebox [OPTIONS] [COMMAND]"
+        echo
+        echo "Docker Environment for Claude CLI"
+        echo
+        echo "Options:"
+        echo "  -h, --help                      Display help for command"
+        echo "  --verbose                        Show detailed output"
+        echo "  --enable-sudo                    Enable sudo without password"
+        echo "  --disable-firewall               Disable network restrictions"
+        echo
+        echo "ClaudeBox Commands:"
+        echo "$our_commands"
+        echo
+        cecho "For Claude CLI commands, run:" "$CYAN"
+        cecho "  claudebox help claude" "$CYAN"
+        echo
+        cecho "For full command reference, run:" "$CYAN"
+        cecho "  claudebox help full" "$CYAN"
+        echo
+    else
+        # No Docker image - show compact menu
+        echo
+        logo_small
+        echo
+        echo "Usage: claudebox [OPTIONS] [COMMAND]"
+        echo
+        if [[ -n "$message" ]]; then
+            echo "$message"
+        else
+            echo "Docker Environment for Claude CLI"
+        fi
+        echo
+        echo "Options:"
+        echo "  -h, --help                      Display help for command"
+        echo "  --verbose                        Show detailed output"
+        echo "  --enable-sudo                    Enable sudo without password"
+        echo "  --disable-firewall               Disable network restrictions"
+        echo
+        echo "Commands:"
+        echo "$our_commands"
+        echo
+        if [[ -n "$footer" ]]; then
+            cecho "$footer" "$YELLOW"
+            echo
+        fi
+    fi
+}
+
+# Show Claude help (runs Claude's help in container)
+show_claude_help() {
+    if [[ -n "${IMAGE_NAME:-}" ]] && docker image inspect "$IMAGE_NAME" &>/dev/null; then
+        # Get Claude's help and just change claude to claudebox in the header
+        local claude_help=$(docker run --rm "$IMAGE_NAME" claude --help 2>&1 | grep -v "iptables")
+        
+        # Just change claude to claudebox in the first line
+        local processed_help=$(echo "$claude_help" | sed '1s/claude/claudebox/g')
+        
+        # Output everything at once
+        echo
+        logo_small
+        echo
+        echo "$processed_help"
+    else
+        error "No Docker image found for this project. Run 'claudebox' first to build the image."
+    fi
+}
+
+# Show full combined help
+show_full_help() {
     if [[ -n "${IMAGE_NAME:-}" ]] && docker image inspect "$IMAGE_NAME" &>/dev/null; then
         # Get Claude's help and blend our additions
         local claude_help=$(docker run --rm "$IMAGE_NAME" claude --help 2>&1 | grep -v "iptables")
@@ -169,29 +242,8 @@ show_help() {
         echo
         echo "$full_help"
     else
-        # No Docker image - show compact menu
-        echo
-        logo_small
-        echo
-        echo "Usage: claudebox [OPTIONS] [COMMAND]"
-        echo
-        if [[ -n "$message" ]]; then
-            echo "$message"
-        else
-            echo "Docker Environment for Claude CLI"
-        fi
-        echo
-        echo "Options:"
-        echo "  -h, --help                      Display help for command"
-        echo "$our_options"
-        echo
-        echo "Commands:"
-        echo "$our_commands"
-        echo
-        if [[ -n "$footer" ]]; then
-            cecho "$footer" "$YELLOW"
-            echo
-        fi
+        # No Docker image - show compact menu (same as show_help)
+        show_help
     fi
 }
 
@@ -265,4 +317,4 @@ dispatch_command() {
 }
 
 # Export all public functions
-export -f dispatch_command show_help show_no_slots_menu show_no_ready_slots_menu _forward_to_container
+export -f dispatch_command show_help show_claude_help show_full_help show_no_slots_menu show_no_ready_slots_menu _forward_to_container
