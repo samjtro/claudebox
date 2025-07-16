@@ -187,5 +187,151 @@ get_current_profiles() {
     printf '%s\n' "${current_profiles[@]}"
 }
 
+# -------- Profile installation functions for Docker builds -------------------
+get_profile_core() {
+    local packages=$(get_profile_packages "core")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_build_tools() {
+    local packages=$(get_profile_packages "build-tools")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_shell() {
+    local packages=$(get_profile_packages "shell")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_networking() {
+    local packages=$(get_profile_packages "networking")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_c() {
+    local packages=$(get_profile_packages "c")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_openwrt() {
+    local packages=$(get_profile_packages "openwrt")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_rust() {
+    cat << 'EOF'
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/home/claude/.cargo/bin:$PATH"
+EOF
+}
+
+get_profile_python() {
+    cat << 'EOF'
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/home/claude/.local/bin:$PATH"
+EOF
+}
+
+get_profile_go() {
+    cat << 'EOF'
+RUN wget -O go.tar.gz https://golang.org/dl/go1.21.0.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go.tar.gz && \
+    rm go.tar.gz
+ENV PATH="/usr/local/go/bin:$PATH"
+EOF
+}
+
+get_profile_javascript() {
+    cat << 'EOF'
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+ENV NVM_DIR="/home/claude/.nvm"
+RUN . $NVM_DIR/nvm.sh && nvm install --lts
+EOF
+}
+
+get_profile_java() {
+    local packages=$(get_profile_packages "java")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_ruby() {
+    local packages=$(get_profile_packages "ruby")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_php() {
+    local packages=$(get_profile_packages "php")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_database() {
+    local packages=$(get_profile_packages "database")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_devops() {
+    local packages=$(get_profile_packages "devops")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_web() {
+    local packages=$(get_profile_packages "web")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_embedded() {
+    local packages=$(get_profile_packages "embedded")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_datascience() {
+    local packages=$(get_profile_packages "datascience")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_security() {
+    local packages=$(get_profile_packages "security")
+    if [[ -n "$packages" ]]; then
+        echo "RUN apt-get update && apt-get install -y $packages && apt-get clean"
+    fi
+}
+
+get_profile_ml() {
+    # ML profile just needs build tools which are dependencies
+    echo "# ML profile uses build-tools for compilation"
+}
+
 export -f _read_ini get_profile_packages get_profile_description get_all_profile_names profile_exists expand_profile
 export -f get_profile_file_path read_config_value read_profile_section update_profile_section get_current_profiles
+export -f get_profile_core get_profile_build_tools get_profile_shell get_profile_networking get_profile_c get_profile_openwrt
+export -f get_profile_rust get_profile_python get_profile_go get_profile_javascript get_profile_java get_profile_ruby
+export -f get_profile_php get_profile_database get_profile_devops get_profile_web get_profile_embedded get_profile_datascience
+export -f get_profile_security get_profile_ml

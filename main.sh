@@ -28,7 +28,6 @@ readonly SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 readonly INSTALL_ROOT="$HOME/.claudebox"
 export SCRIPT_PATH
 export CLAUDEBOX_SCRIPT_DIR="${SCRIPT_DIR}"
-
 # Set PROJECT_DIR early (but allow override from environment)
 export PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 
@@ -459,7 +458,8 @@ build_docker_image() {
             profile=$(echo "$profile" | tr -d '[:space:]')
             [[ -z "$profile" ]] && continue
             
-            local profile_fn="get_profile_${profile}"
+            # Convert hyphens to underscores for function names
+            local profile_fn="get_profile_${profile//-/_}"
             if type -t "$profile_fn" >/dev/null; then
                 profile_installations+=$'\n'"$($profile_fn)"
             fi
