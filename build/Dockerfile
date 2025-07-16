@@ -150,8 +150,10 @@ EOF
 COPY --chmod=755 init-firewall /home/$USERNAME/init-firewall
 RUN chown $USERNAME:$USERNAME /home/$USERNAME/init-firewall
 
-# Copy generate-tools-readme script
+# Copy generate-tools-readme script and tools-report.sh library
 COPY --chmod=755 generate-tools-readme /usr/local/bin/generate-tools-readme
+RUN mkdir -p /usr/local/lib/claudebox
+COPY tools-report.sh /usr/local/lib/claudebox/tools-report.sh
 
 USER $USERNAME
 RUN bash -c "source $NVM_DIR/nvm.sh && claude --version"

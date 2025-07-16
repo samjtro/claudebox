@@ -435,6 +435,7 @@ build_docker_image() {
     cp "${root_dir}/build/docker-entrypoint" "$build_context/docker-entrypoint.sh" || error "Failed to copy docker-entrypoint.sh"
     cp "${root_dir}/build/init-firewall" "$build_context/init-firewall" || error "Failed to copy init-firewall"
     cp "${root_dir}/build/generate-tools-readme" "$build_context/generate-tools-readme" || error "Failed to copy generate-tools-readme"
+    cp "${root_dir}/lib/tools-report.sh" "$build_context/tools-report.sh" || error "Failed to copy tools-report.sh"
     cp "${root_dir}/build/dockerignore" "$build_context/.dockerignore" || error "Failed to copy .dockerignore"
     chmod +x "$build_context/docker-entrypoint.sh" "$build_context/init-firewall" "$build_context/generate-tools-readme"
     
