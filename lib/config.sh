@@ -304,12 +304,13 @@ get_profile_web() {
 }
 
 get_profile_embedded() {
-    # Remove platformio from apt packages - it's installed via pip
-    local packages="gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen"
-    cat << 'EOF'
-RUN apt-get update && apt-get install -y gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen python3-pip && apt-get clean
-RUN pip3 install platformio
+    local packages=$(get_profile_packages "embedded")
+    if [[ -n "$packages" ]]; then
+        cat << 'EOF'
+RUN apt-get update && apt-get install -y gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen && apt-get clean
+RUN /home/claude/.local/bin/uv tool install platformio
 EOF
+    fi
 }
 
 get_profile_datascience() {
