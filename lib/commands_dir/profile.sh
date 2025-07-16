@@ -52,6 +52,8 @@ _cmd_profiles() {
 
 _cmd_profile() {
     # Profile menu/help
+    logo_small
+    echo
     cecho "ClaudeBox Profile Management:" "$CYAN"
     echo
     echo -e "  ${GREEN}profiles${NC}                 Show all available profiles"
@@ -64,6 +66,7 @@ _cmd_profile() {
     echo "  claudebox add python rust       # Add Python and Rust profiles"
     echo "  claudebox remove rust           # Remove Rust profile"
     echo "  claudebox add status            # Check current project's profiles"
+    echo
     exit 0
 }
 
