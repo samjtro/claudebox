@@ -63,6 +63,9 @@ _cmd_slot() {
     
     info "Using slot $slot_num: $slot_name"
     
+    # Sync commands before launching container
+    sync_commands_to_project "$parent_dir"
+    
     # Now we need to run the container with the slot selected
     # Get parent folder name for container naming
     local parent_folder_name=$(generate_parent_folder_name "$PROJECT_DIR")

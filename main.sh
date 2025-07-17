@@ -364,6 +364,9 @@ main() {
                 echo "[DEBUG] container_name=$container_name" >&2
             fi
             
+            # Sync commands before launching container
+            sync_commands_to_project "$PROJECT_PARENT_DIR"
+            
             # Load saved default flags ONLY for interactive Claude (no command)
             local saved_flags=()
             if [[ -f "$HOME/.claudebox/default-flags" ]]; then

@@ -78,6 +78,8 @@ init_project_dir() {
     echo "$path" > "$parent/.project_path"
     # set up commands symlink in parent (once per project)
     setup_claude_agent_command "$parent"
+    # Sync commands to project
+    sync_commands_to_project "$parent"
 }
 
 # Read/write per-project counter with locking
@@ -481,6 +483,120 @@ get_slot_index() {
     return 1
 }
 
+# Sync commands from bundled and user sources to project
+sync_commands_to_project() {
+    local project_parent="$1"
+    local commands_dir="$project_parent/commands"
+    local cbox_checksum_file="$project_parent/.commands_cbox_checksum"
+    local user_checksum_file="$project_parent/.commands_user_checksum"
+    
+    # Source directories
+    local cbox_source="${CLAUDEBOX_SCRIPT_DIR:-${SCRIPT_DIR}}/commands"
+    local user_source="$HOME/.claude/commands"
+    
+    # Create commands directory if it doesn't exist
+    mkdir -p "$commands_dir"
+    
+    # Calculate checksums of source directories
+    local cbox_checksum=""
+    local user_checksum=""
+    
+    # Get checksum of cbox commands if directory exists
+    if [[ -d "$cbox_source" ]]; then
+        # Find all files, get their content checksum, sort for consistency
+        cbox_checksum=$(find "$cbox_source" -type f -exec sha256sum {} \; 2>/dev/null | sort | sha256sum | cut -d' ' -f1)
+    fi
+    
+    # Get checksum of user commands if directory exists
+    if [[ -d "$user_source" ]]; then
+        user_checksum=$(find "$user_source" -type f -exec sha256sum {} \; 2>/dev/null | sort | sha256sum | cut -d' ' -f1)
+    fi
+    
+    # Check if cbox commands need syncing
+    local sync_cbox=false
+    if [[ -d "$cbox_source" ]]; then
+        if [[ ! -f "$cbox_checksum_file" ]]; then
+            sync_cbox=true
+        else
+            local stored_cbox=$(cat "$cbox_checksum_file" 2>/dev/null || echo "")
+            if [[ "$cbox_checksum" != "$stored_cbox" ]]; then
+                sync_cbox=true
+            fi
+        fi
+    fi
+    
+    # Check if user commands need syncing
+    local sync_user=false
+    if [[ -d "$user_source" ]]; then
+        if [[ ! -f "$user_checksum_file" ]]; then
+            sync_user=true
+        else
+            local stored_user=$(cat "$user_checksum_file" 2>/dev/null || echo "")
+            if [[ "$user_checksum" != "$stored_user" ]]; then
+                sync_user=true
+            fi
+        fi
+    fi
+    
+    # Sync cbox commands
+    if [[ "$sync_cbox" == "true" ]] && [[ -d "$cbox_source" ]]; then
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Syncing cbox commands to $commands_dir/cbox" >&2
+        fi
+        
+        # Remove old cbox commands and recreate
+        rm -rf "$commands_dir/cbox"
+        mkdir -p "$commands_dir/cbox"
+        
+        # Copy preserving directory structure
+        # Use find to handle subdirectories properly
+        cd "$cbox_source"
+        find . -type f | while read -r file; do
+            local dir=$(dirname "$file")
+            mkdir -p "$commands_dir/cbox/$dir"
+            cp "$file" "$commands_dir/cbox/$file"
+        done
+        cd - >/dev/null
+        
+        # Save checksum
+        echo "$cbox_checksum" > "$cbox_checksum_file"
+    fi
+    
+    # Sync user commands
+    if [[ "$sync_user" == "true" ]] && [[ -d "$user_source" ]]; then
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "[DEBUG] Syncing user commands to $commands_dir/user" >&2
+        fi
+        
+        # Remove old user commands and recreate
+        rm -rf "$commands_dir/user"
+        mkdir -p "$commands_dir/user"
+        
+        # Copy preserving directory structure
+        cd "$user_source"
+        find . -type f | while read -r file; do
+            local dir=$(dirname "$file")
+            mkdir -p "$commands_dir/user/$dir"
+            cp "$file" "$commands_dir/user/$file"
+        done
+        cd - >/dev/null
+        
+        # Save checksum
+        echo "$user_checksum" > "$user_checksum_file"
+    fi
+    
+    # Clean up empty directories if sources don't exist
+    if [[ ! -d "$cbox_source" ]] && [[ -d "$commands_dir/cbox" ]]; then
+        rm -rf "$commands_dir/cbox"
+        rm -f "$cbox_checksum_file"
+    fi
+    
+    if [[ ! -d "$user_source" ]] && [[ -d "$commands_dir/user" ]]; then
+        rm -rf "$commands_dir/user"
+        rm -f "$user_checksum_file"
+    fi
+}
+
 # Export all functions
 export -f crc32_word crc32_string crc32_file
 export -f slugify_path generate_container_name generate_parent_folder_name get_parent_dir
@@ -490,3 +606,4 @@ export -f create_container determine_next_start_container find_ready_slot find_i
 export -f get_project_folder_name get_image_name _get_project_slug
 export -f get_project_by_path list_all_projects resolve_project_path
 export -f list_project_slots get_slot_dir get_slot_index prune_slot_counter
+export -f sync_commands_to_project
