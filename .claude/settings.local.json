@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tmux list-panes:*)",
+      "Bash(tmux list-windows:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "memory",
+    "sequential-thinking",
+    "context7"
+  ]
+}

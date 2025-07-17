@@ -370,8 +370,7 @@ Please install tmux first:
   RHEL/CentOS: sudo yum install tmux"
     fi
     
-    # Greek alphabet names for panes
-    local greek_names=("Alpha" "Beta" "Gamma" "Delta" "Epsilon" "Zeta" "Eta" "Theta" "Iota" "Kappa" "Lambda" "Mu")
+    # Let Claude Code manage pane names automatically
     
     # Parse layout parameter if provided
     local layout="${1:-}"
@@ -489,24 +488,20 @@ Have: $ready_slots activated slots"
                     # Add first pane
                     local first_slot="${available_slots[0]}"
                     local session_name="claudebox-$(basename "$PROJECT_DIR")"
-                    # Pass environment variables to the first pane
-                    tmux_cmd="$tmux_cmd -s $session_name 'export CLAUDEBOX_PANE_NAME=${greek_names[0]} CLAUDEBOX_SLOT_NUMBER=$first_slot; $SCRIPT_PATH slot $first_slot'"
-                    tmux_cmd="$tmux_cmd \\; select-pane -T '${greek_names[0]}'"
+                    # Pass environment variables to the first pane using env
+                    tmux_cmd="$tmux_cmd -s $session_name 'env CLAUDEBOX_SLOT_NUMBER=$first_slot $SCRIPT_PATH slot $first_slot'"
                     tmux_cmd="$tmux_cmd \\; rename-window 'ClaudeBox Multi'"
                     slot_index=1
                     
-                    # Add additional panes with titles
+                    # Add additional panes
                     for ((i=1; i<$layout; i++)); do
                         local slot="${available_slots[$slot_index]}"
-                        local pane_name="${greek_names[$i]}"
-                        tmux_cmd="$tmux_cmd \\; split-window -e CLAUDEBOX_SLOT_NUMBER=$slot -e CLAUDEBOX_PANE_NAME=$pane_name '$SCRIPT_PATH slot $slot'"
-                        tmux_cmd="$tmux_cmd \\; select-pane -T '$pane_name'"
+                        tmux_cmd="$tmux_cmd \\; split-window -e CLAUDEBOX_SLOT_NUMBER=$slot '$SCRIPT_PATH slot $slot'"
                         ((slot_index++)) || true
                     done
                     
-                    # Enable pane border status to show titles
+                    # Enable pane border status (Claude Code will manage titles)
                     tmux_cmd="$tmux_cmd \\; set-option -g pane-border-status top"
-                    tmux_cmd="$tmux_cmd \\; set-option -g pane-border-format ' #{pane_title} '"
                     
                     # Add tiled layout if more than 2 panes
                     if [[ $layout -gt 2 ]]; then
@@ -531,18 +526,13 @@ Have: $ready_slots activated slots"
                             
                             local slot="${available_slots[$slot_index]}"
                             
-                            local pane_name="${greek_names[$pane_count]}"
-                            
                             if [[ $pane_count -eq 0 ]]; then
                                 local session_name="claudebox-$(basename "$PROJECT_DIR")"
                                 tmux_cmd="$tmux_cmd -s $session_name '$SCRIPT_PATH slot $slot'"
-                                tmux_cmd="$tmux_cmd \\; select-pane -T '$pane_name'"
-                                tmux_cmd="$tmux_cmd \\; set-environment CLAUDEBOX_PANE_NAME $pane_name"
                                 tmux_cmd="$tmux_cmd \\; set-environment CLAUDEBOX_SLOT_NUMBER $slot"
                                 tmux_cmd="$tmux_cmd \\; rename-window 'ClaudeBox Multi'"
                             else
-                                tmux_cmd="$tmux_cmd \\; split-window -e CLAUDEBOX_SLOT_NUMBER=$slot -e CLAUDEBOX_PANE_NAME=$pane_name '$SCRIPT_PATH slot $slot'"
-                                tmux_cmd="$tmux_cmd \\; select-pane -T '$pane_name'"
+                                tmux_cmd="$tmux_cmd \\; split-window -e CLAUDEBOX_SLOT_NUMBER=$slot '$SCRIPT_PATH slot $slot'"
                             fi
                             
                             ((slot_index++)) || true
@@ -550,9 +540,8 @@ Have: $ready_slots activated slots"
                         done
                     done
                     
-                    # Enable pane border status to show titles
+                    # Enable pane border status (Claude Code will manage titles)
                     tmux_cmd="$tmux_cmd \\; set-option -g pane-border-status top"
-                    tmux_cmd="$tmux_cmd \\; set-option -g pane-border-format ' #{pane_title} '"
                     
                     # Add tiled layout
                     if [[ $pane_count -gt 2 ]]; then

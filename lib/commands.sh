@@ -4,9 +4,6 @@
 # This is the central command management system for ClaudeBox.
 # All command implementations are organized into logical modules below.
 
-# Get the commands subdirectory path
-COMMANDS_DIR="${LIB_DIR}/commands_dir"
-
 # ============================================================================
 # CORE COMMANDS - Essential ClaudeBox operations
 # ============================================================================
@@ -14,7 +11,7 @@ COMMANDS_DIR="${LIB_DIR}/commands_dir"
 # - help: Shows ClaudeBox help and Claude CLI help
 # - shell: Opens an interactive shell in the container
 # - update: Updates Claude CLI and optionally ClaudeBox itself
-source "${COMMANDS_DIR}/core.sh"
+source "${LIB_DIR}/commands.core.sh"
 
 # ============================================================================
 # PROFILE COMMANDS - Development profile management
@@ -25,7 +22,7 @@ source "${COMMANDS_DIR}/core.sh"
 # - add: Adds development profiles to the project
 # - remove: Removes profiles from the project
 # - install: Installs additional apt packages
-source "${COMMANDS_DIR}/profile.sh"
+source "${LIB_DIR}/commands.profile.sh"
 
 # ============================================================================
 # SLOT COMMANDS - Container slot management
@@ -35,7 +32,7 @@ source "${COMMANDS_DIR}/profile.sh"
 # - slots: Lists all container slots for the project
 # - slot: Launches a specific numbered slot
 # - revoke: Removes container slots
-source "${COMMANDS_DIR}/slot.sh"
+source "${LIB_DIR}/commands.slot.sh"
 
 # ============================================================================
 # INFO COMMANDS - Information display
@@ -44,7 +41,7 @@ source "${COMMANDS_DIR}/slot.sh"
 # - info: Shows comprehensive project and system information
 # - projects: Lists all ClaudeBox projects system-wide
 # - allowlist: Shows/manages the firewall allowlist
-source "${COMMANDS_DIR}/info.sh"
+source "${LIB_DIR}/commands.info.sh"
 
 # ============================================================================
 # CLEAN COMMANDS - Cleanup and maintenance
@@ -53,7 +50,7 @@ source "${COMMANDS_DIR}/info.sh"
 # - clean: Various cleanup operations (containers, images, cache, etc.)
 # - undo: Restores the oldest backup of claudebox script
 # - redo: Restores the newest backup of claudebox script
-source "${COMMANDS_DIR}/clean.sh"
+source "${LIB_DIR}/commands.clean.sh"
 
 # ============================================================================
 # SYSTEM COMMANDS - System utilities and special features
@@ -64,7 +61,7 @@ source "${COMMANDS_DIR}/clean.sh"
 # - rebuild: Forces a Docker image rebuild
 # - tmux: Launches ClaudeBox with tmux support
 # - project: Opens a project by name from anywhere
-source "${COMMANDS_DIR}/system.sh"
+source "${LIB_DIR}/commands.system.sh"
 
 # ============================================================================
 # HELPER FUNCTIONS
