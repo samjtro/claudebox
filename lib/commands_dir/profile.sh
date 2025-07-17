@@ -110,6 +110,12 @@ _cmd_add() {
     # Process profile names
     local selected=() remaining=()
     while [[ $# -gt 0 ]]; do
+        # Stop processing if we hit a flag (starts with -)
+        if [[ "$1" == -* ]]; then
+            remaining=("$@")
+            break
+        fi
+        
         if profile_exists "$1"; then
             selected+=("$1")
             shift
@@ -173,12 +179,18 @@ _cmd_remove() {
     # Get list of profiles to remove
     local to_remove=()
     while [[ $# -gt 0 ]]; do
+        # Stop processing if we hit a flag (starts with -)
+        if [[ "$1" == -* ]]; then
+            break
+        fi
+        
         if profile_exists "$1"; then
             to_remove+=("$1")
             shift
         else
-            warn "Unknown profile: $1"
-            shift
+            # Also stop if we hit an unknown profile
+            # This prevents consuming Claude args as profile names
+            break
         fi
     done
 
