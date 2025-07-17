@@ -98,7 +98,17 @@ write_counter() {
 init_slot_dir() {
     local dir="$1"
     mkdir -p "$dir"
-    mkdir -p "$dir/.claude"
+    
+    # Check if claude/ directory exists in the claudebox root to seed .claude
+    local claude_source="${CLAUDEBOX_SCRIPT_DIR:-${SCRIPT_DIR}}/claude"
+    if [[ -d "$claude_source" ]]; then
+        # Copy the claude folder to .claude to seed it
+        cp -r "$claude_source" "$dir/.claude"
+    else
+        # Fall back to creating empty .claude directory
+        mkdir -p "$dir/.claude"
+    fi
+    
     mkdir -p "$dir/.config"
     mkdir -p "$dir/.cache"
     # Don't pre-create .claude.json - let Claude create it naturally
