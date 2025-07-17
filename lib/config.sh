@@ -239,8 +239,8 @@ EOF
 
 get_profile_python() {
     cat << 'EOF'
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/home/claude/.local/bin:$PATH"
+# Python profile - uv already installed in base image
+# Python venv and dev tools are managed via entrypoint flag system
 EOF
 }
 
@@ -308,7 +308,9 @@ get_profile_embedded() {
     if [[ -n "$packages" ]]; then
         cat << 'EOF'
 RUN apt-get update && apt-get install -y gcc-arm-none-eabi gdb-multiarch openocd picocom minicom screen && apt-get clean
-RUN /home/claude/.local/bin/uv tool install platformio
+USER claude
+RUN ~/.local/bin/uv tool install platformio
+USER root
 EOF
     fi
 }

@@ -61,9 +61,7 @@ RUN --mount=type=cache,target=/home/$USERNAME/.cache/uv,uid=1000,gid=1000 \
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && \
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 
-# Create virtual environment with uv
-RUN --mount=type=cache,target=/home/$USERNAME/.cache/uv,uid=1000,gid=1000 \
-    ~/.local/bin/uv venv ~/.venv
+# uv is installed - venv creation is handled by entrypoint in shared folder
 
 RUN git config --global core.pager delta && \
     git config --global interactive.diffFilter "delta --color-only" && \

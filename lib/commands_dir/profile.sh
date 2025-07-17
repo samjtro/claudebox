@@ -186,16 +186,49 @@ _cmd_remove() {
 
     # Remove specified profiles
     local new_profiles=()
+    local python_profiles_removed=false
     for profile in "${current_profiles[@]}"; do
         local keep=true
         for remove in "${to_remove[@]}"; do
             if [[ "$profile" == "$remove" ]]; then
                 keep=false
+                # Check if we're removing a Python-related profile
+                if [[ "$profile" == "python" ]] || [[ "$profile" == "ml" ]] || [[ "$profile" == "datascience" ]]; then
+                    python_profiles_removed=true
+                fi
                 break
             fi
         done
         [[ "$keep" == "true" ]] && new_profiles+=("$profile")
     done
+    
+    # Check if any Python-related profiles remain
+    local has_python_profiles=false
+    for profile in "${new_profiles[@]}"; do
+        if [[ "$profile" == "python" ]] || [[ "$profile" == "ml" ]] || [[ "$profile" == "datascience" ]]; then
+            has_python_profiles=true
+            break
+        fi
+    done
+    
+    # If we removed Python profiles and no Python profiles remain, clean up Python flags
+    if [[ "$python_profiles_removed" == "true" ]] && [[ "$has_python_profiles" == "false" ]]; then
+        init_project_dir "$PROJECT_DIR"
+        PROJECT_PARENT_DIR=$(get_parent_dir "$PROJECT_DIR")
+        
+        # Remove Python flags and venv folder if they exist
+        if [[ -f "$PROJECT_PARENT_DIR/.venv_flag" ]]; then
+            rm -f "$PROJECT_PARENT_DIR/.venv_flag"
+        fi
+        if [[ -f "$PROJECT_PARENT_DIR/.pydev_flag" ]]; then
+            rm -f "$PROJECT_PARENT_DIR/.pydev_flag"
+        fi
+        if [[ -d "$PROJECT_PARENT_DIR/.venv" ]]; then
+            rm -rf "$PROJECT_PARENT_DIR/.venv"
+        fi
+        
+        cecho "Cleaned up Python environment flags and venv folder" "$YELLOW"
+    fi
 
     # Write back the filtered profiles
     {
