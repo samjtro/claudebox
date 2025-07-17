@@ -81,8 +81,8 @@ show_no_slots_menu() {
     printf "  ${CYAN}claudebox create${NC}  - Create a new slot\n"
     printf "  ${CYAN}claudebox slots${NC}   - View existing slots\n"
     echo
-    printf "  ${DIM}Hint: You can create multiple slots, each with different${NC}\n"
-    printf "  ${DIM}authentication tokens and settings.${NC}\n"
+    printf "  ${DIM}Hint: Create multiple slots to run parallel authenticated${NC}\n"
+    printf "  ${DIM}Claude sessions in the same project.${NC}\n"
     echo
     exit 1
 }
