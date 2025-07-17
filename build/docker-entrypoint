@@ -49,51 +49,7 @@ fi
 
 # Python venv management moved to user context section below
 
-# Symlink creation will be handled after user switch
-
-# Generate DEVELOPER_README.md if profiles have changed
-if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
-    PROFILES_INI="/home/DOCKERUSER/.claudebox/profiles.ini"
-    README_FILE="/home/DOCKERUSER/.claudebox/DEVELOPER_README.md"
-    CHECKSUM_FILE="/home/DOCKERUSER/.claudebox/.developer_readme_checksum"
-    
-    if [ -f "$PROFILES_INI" ]; then
-        # Calculate current checksum of profiles.ini
-        CURRENT_CHECKSUM=$(sha256sum "$PROFILES_INI" | cut -d' ' -f1)
-        
-        # Check if we need to regenerate
-        NEED_REGENERATE=false
-        if [ ! -f "$README_FILE" ]; then
-            # No README exists yet
-            NEED_REGENERATE=true
-        elif [ ! -f "$CHECKSUM_FILE" ]; then
-            # No checksum file exists
-            NEED_REGENERATE=true
-        else
-            # Compare checksums - use if statement to avoid set -e issues
-            STORED_CHECKSUM=""
-            if [ -f "$CHECKSUM_FILE" ]; then
-                STORED_CHECKSUM=$(cat "$CHECKSUM_FILE")
-            fi
-            if [ "$CURRENT_CHECKSUM" != "$STORED_CHECKSUM" ]; then
-                NEED_REGENERATE=true
-            fi
-        fi
-        
-        if [ "$NEED_REGENERATE" = "true" ]; then
-            # Run as the docker user, not root
-            if runuser -u DOCKERUSER -- generate-tools-readme >/dev/null 2>&1; then
-                # Store the checksum only if generation succeeded
-                echo "$CURRENT_CHECKSUM" > "$CHECKSUM_FILE"
-            fi
-        fi
-        
-        # Create symlink in home directory if README exists and symlink doesn't
-        if [ -f "$README_FILE" ] && [ ! -e "/home/DOCKERUSER/DEVELOPER_README.md" ]; then
-            ln -s "$README_FILE" "/home/DOCKERUSER/DEVELOPER_README.md"
-        fi
-    fi
-fi
+# DEVELOPER_README generation moved to user context section below
 
 cd /home/DOCKERUSER
 
@@ -216,6 +172,50 @@ else
                                 touch "$PYDEV_FLAG"
                             fi
                         fi
+                    fi
+                fi
+            fi
+            
+            # Generate DEVELOPER_README.md if profiles have changed
+            if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
+                PROFILES_INI="$HOME/.claudebox/profiles.ini"
+                README_FILE="$HOME/.claudebox/DEVELOPER_README.md"
+                CHECKSUM_FILE="$HOME/.claudebox/.developer_readme_checksum"
+                
+                if [ -f "$PROFILES_INI" ]; then
+                    # Calculate current checksum of profiles.ini
+                    CURRENT_CHECKSUM=$(sha256sum "$PROFILES_INI" | cut -d' ' -f1)
+                    
+                    # Check if we need to regenerate
+                    NEED_REGENERATE=false
+                    if [ ! -f "$README_FILE" ]; then
+                        # No README exists yet
+                        NEED_REGENERATE=true
+                    elif [ ! -f "$CHECKSUM_FILE" ]; then
+                        # No checksum file exists
+                        NEED_REGENERATE=true
+                    else
+                        # Compare checksums - use if statement to avoid set -e issues
+                        STORED_CHECKSUM=""
+                        if [ -f "$CHECKSUM_FILE" ]; then
+                            STORED_CHECKSUM=$(cat "$CHECKSUM_FILE")
+                        fi
+                        if [ "$CURRENT_CHECKSUM" != "$STORED_CHECKSUM" ]; then
+                            NEED_REGENERATE=true
+                        fi
+                    fi
+                    
+                    if [ "$NEED_REGENERATE" = "true" ]; then
+                        # Generate the README
+                        if generate-tools-readme >/dev/null 2>&1; then
+                            # Store the checksum only if generation succeeded
+                            echo "$CURRENT_CHECKSUM" > "$CHECKSUM_FILE"
+                        fi
+                    fi
+                    
+                    # Create symlink in home directory if README exists and symlink doesn't
+                    if [ -f "$README_FILE" ] && [ ! -e "$HOME/DEVELOPER_README.md" ]; then
+                        ln -s "$README_FILE" "$HOME/DEVELOPER_README.md"
                     fi
                 fi
             fi
