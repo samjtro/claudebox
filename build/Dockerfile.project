@@ -15,8 +15,7 @@ WORKDIR /workspace
 # Copy entrypoint (in case it needs updating)
 USER root
 COPY --chown=claude docker-entrypoint.sh /usr/local/bin/docker-entrypoint
-RUN sed -i "s|/home/DOCKERUSER|/home/claude|g" /usr/local/bin/docker-entrypoint && \
-    sed -i "s|runuser -u DOCKERUSER|runuser -u claude|g" /usr/local/bin/docker-entrypoint && \
+RUN sed -i "s#DOCKERUSER#claude#g" /usr/local/bin/docker-entrypoint && \
     chmod +x /usr/local/bin/docker-entrypoint
 
 # Set the entrypoint

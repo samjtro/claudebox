@@ -73,8 +73,7 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
             
             # Create .venv_flag to indicate venv is set up
             if [ -d "$VENV_DIR" ]; then
-                touch "$VENV_FLAG"
-                chown DOCKERUSER:DOCKERUSER "$VENV_FLAG"
+                runuser -u DOCKERUSER -- touch "$VENV_FLAG"
                 
                 # Add activation to shell rc files
                 for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
@@ -96,15 +95,51 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
                 
                 # Create .pydev_flag to indicate Python dev tools are deployed
                 if [ $? -eq 0 ]; then
-                    touch "$PYDEV_FLAG"
-                    chown DOCKERUSER:DOCKERUSER "$PYDEV_FLAG"
+                    runuser -u DOCKERUSER -- touch "$PYDEV_FLAG"
                 fi
             fi
         fi
     fi
 fi
 
-# DEVELOPER_README generation moved to user context section below
+# Generate tooling.md if profiles have changed
+if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
+    PROFILES_INI="/home/DOCKERUSER/.claudebox/profiles.ini"
+    TOOLING_FILE="/home/DOCKERUSER/.claudebox/tooling.md"
+    CHECKSUM_FILE="/home/DOCKERUSER/.claudebox/.tooling_checksum"
+    
+    if [ -f "$PROFILES_INI" ]; then
+        # Calculate current checksum of profiles.ini
+        CURRENT_CHECKSUM=$(sha256sum "$PROFILES_INI" | cut -d' ' -f1)
+        
+        # Check if we need to regenerate
+        NEED_REGENERATE=false
+        if [ ! -f "$TOOLING_FILE" ]; then
+            # No tooling file exists yet
+            NEED_REGENERATE=true
+        elif [ ! -f "$CHECKSUM_FILE" ]; then
+            # No checksum file exists
+            NEED_REGENERATE=true
+        else
+            # Compare checksums - use if statement to avoid set -e issues
+            STORED_CHECKSUM=""
+            if [ -f "$CHECKSUM_FILE" ]; then
+                STORED_CHECKSUM=$(cat "$CHECKSUM_FILE")
+            fi
+            if [ "$CURRENT_CHECKSUM" != "$STORED_CHECKSUM" ]; then
+                NEED_REGENERATE=true
+            fi
+        fi
+        
+        if [ "$NEED_REGENERATE" = "true" ]; then
+            # Generate the tooling file as the docker user
+            if runuser -u DOCKERUSER -- generate-tools-readme >/dev/null 2>&1; then
+                # Store the checksum as the docker user
+                runuser -u DOCKERUSER -- bash -c "echo '$CURRENT_CHECKSUM' > '$CHECKSUM_FILE'"
+            fi
+        fi
+    fi
+fi
 
 cd /home/DOCKERUSER
 
@@ -178,45 +213,7 @@ else
                 echo "Warning: NVM not found at $NVM_DIR" >&2
             fi
             
-            
-            # Generate tooling.md if profiles have changed
-            if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
-                PROFILES_INI="$HOME/.claudebox/profiles.ini"
-                TOOLING_FILE="$HOME/.claudebox/tooling.md"
-                CHECKSUM_FILE="$HOME/.claudebox/.tooling_checksum"
-                
-                if [ -f "$PROFILES_INI" ]; then
-                    # Calculate current checksum of profiles.ini
-                    CURRENT_CHECKSUM=$(sha256sum "$PROFILES_INI" | cut -d' ' -f1)
-                    
-                    # Check if we need to regenerate
-                    NEED_REGENERATE=false
-                    if [ ! -f "$TOOLING_FILE" ]; then
-                        # No tooling file exists yet
-                        NEED_REGENERATE=true
-                    elif [ ! -f "$CHECKSUM_FILE" ]; then
-                        # No checksum file exists
-                        NEED_REGENERATE=true
-                    else
-                        # Compare checksums - use if statement to avoid set -e issues
-                        STORED_CHECKSUM=""
-                        if [ -f "$CHECKSUM_FILE" ]; then
-                            STORED_CHECKSUM=$(cat "$CHECKSUM_FILE")
-                        fi
-                        if [ "$CURRENT_CHECKSUM" != "$STORED_CHECKSUM" ]; then
-                            NEED_REGENERATE=true
-                        fi
-                    fi
-                    
-                    if [ "$NEED_REGENERATE" = "true" ]; then
-                        # Generate the tooling file
-                        if generate-tools-readme >/dev/null 2>&1; then
-                            # Store the checksum only if generation succeeded
-                            echo "$CURRENT_CHECKSUM" > "$CHECKSUM_FILE"
-                        fi
-                    fi
-                fi
-            fi
+            # tooling.md generation is handled in root section above
             
             # Create symlink from ~/.claude/commands to ~/.claudebox/commands
             # The ~/.claudebox folder is mounted from the host
