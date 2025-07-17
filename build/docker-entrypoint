@@ -47,62 +47,7 @@ if [ "$ENABLE_SUDO" != "true" ]; then
     rm -f /etc/sudoers.d/DOCKERUSER
 fi
 
-# Python venv management with flag-based system
-if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
-    CLAUDEBOX_DIR="/home/DOCKERUSER/.claudebox"
-    CONFIG_FILE="$CLAUDEBOX_DIR/profiles.ini"
-    VENV_DIR="$CLAUDEBOX_DIR/.venv"
-    VENV_FLAG="$CLAUDEBOX_DIR/.venv_flag"
-    PYDEV_FLAG="$CLAUDEBOX_DIR/.pydev_flag"
-
-    # Check if we need to set up the core Python environment
-    if command -v uv >/dev/null 2>&1; then
-        # Check if both venv folder and .venv_flag exist
-        if [ -d "$VENV_DIR" ] && [ -f "$VENV_FLAG" ]; then
-            # Already set up, just ensure activation in shell rc files
-            for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
-                if ! grep -q "source $VENV_DIR/bin/activate" "$shell_rc"; then
-                    echo "if [ -f $VENV_DIR/bin/activate ]; then source $VENV_DIR/bin/activate; fi" >> "$shell_rc"
-                fi
-            done
-        else
-            # Create venv and activate it
-            if [ ! -d "$VENV_DIR" ]; then
-                PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- uv venv "$VENV_DIR" || true
-            fi
-            
-            # Create .venv_flag to indicate venv is set up
-            if [ -d "$VENV_DIR" ]; then
-                touch "$VENV_FLAG"
-                chown DOCKERUSER:DOCKERUSER "$VENV_FLAG"
-                
-                # Add activation to shell rc files
-                for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
-                    if ! grep -q "source $VENV_DIR/bin/activate" "$shell_rc"; then
-                        echo "if [ -f $VENV_DIR/bin/activate ]; then source $VENV_DIR/bin/activate; fi" >> "$shell_rc"
-                    fi
-                done
-            fi
-        fi
-
-        # Check if Python profile is added and deploy Python dev tools if needed
-        if [ -f "$CONFIG_FILE" ] && grep -qE 'python|ml|datascience' "$CONFIG_FILE"; then
-            if [ ! -f "$PYDEV_FLAG" ] && [ -d "$VENV_DIR" ]; then
-                # Deploy Python dev tools
-                PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- bash -c "
-                    source $VENV_DIR/bin/activate
-                    uv pip install black flake8 mypy pytest ipython jupyter numpy pandas matplotlib seaborn scikit-learn
-                " || true
-                
-                # Create .pydev_flag to indicate Python dev tools are deployed
-                if [ $? -eq 0 ]; then
-                    touch "$PYDEV_FLAG"
-                    chown DOCKERUSER:DOCKERUSER "$PYDEV_FLAG"
-                fi
-            fi
-        fi
-    fi
-fi
+# Python venv management moved to user context section below
 
 # Symlink creation will be handled after user switch
 
@@ -222,6 +167,58 @@ else
                 echo "Warning: NVM not found at $NVM_DIR" >&2
             fi
             
+            # Python venv management with flag-based system
+            if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
+                CLAUDEBOX_DIR="$HOME/.claudebox"
+                CONFIG_FILE="$CLAUDEBOX_DIR/profiles.ini"
+                VENV_DIR="$CLAUDEBOX_DIR/.venv"
+                VENV_FLAG="$CLAUDEBOX_DIR/.venv_flag"
+                PYDEV_FLAG="$CLAUDEBOX_DIR/.pydev_flag"
+
+                # Check if we need to set up the core Python environment
+                if command -v uv >/dev/null 2>&1; then
+                    # Check if both venv folder and .venv_flag exist
+                    if [ -d "$VENV_DIR" ] && [ -f "$VENV_FLAG" ]; then
+                        # Already set up, just ensure activation in shell rc files
+                        for shell_rc in $HOME/.zshrc $HOME/.bashrc; do
+                            if ! grep -q "source $VENV_DIR/bin/activate" "$shell_rc"; then
+                                echo "if [ -f $VENV_DIR/bin/activate ]; then source $VENV_DIR/bin/activate; fi" >> "$shell_rc"
+                            fi
+                        done
+                    else
+                        # Create venv and activate it
+                        if [ ! -d "$VENV_DIR" ]; then
+                            uv venv "$VENV_DIR" || true
+                        fi
+                        
+                        # Create .venv_flag to indicate venv is set up
+                        if [ -d "$VENV_DIR" ]; then
+                            touch "$VENV_FLAG"
+                            
+                            # Add activation to shell rc files
+                            for shell_rc in $HOME/.zshrc $HOME/.bashrc; do
+                                if ! grep -q "source $VENV_DIR/bin/activate" "$shell_rc"; then
+                                    echo "if [ -f $VENV_DIR/bin/activate ]; then source $VENV_DIR/bin/activate; fi" >> "$shell_rc"
+                                fi
+                            done
+                        fi
+                    fi
+
+                    # Check if Python profile is added and deploy Python dev tools if needed
+                    if [ -f "$CONFIG_FILE" ] && grep -qE 'python|ml|datascience' "$CONFIG_FILE"; then
+                        if [ ! -f "$PYDEV_FLAG" ] && [ -d "$VENV_DIR" ]; then
+                            # Deploy Python dev tools
+                            source $VENV_DIR/bin/activate
+                            uv pip install black flake8 mypy pytest ipython jupyter numpy pandas matplotlib seaborn scikit-learn || true
+                            
+                            # Create .pydev_flag to indicate Python dev tools are deployed
+                            if [ $? -eq 0 ]; then
+                                touch "$PYDEV_FLAG"
+                            fi
+                        fi
+                    fi
+                fi
+            fi
             
             # Create symlink from ~/.claude/commands to ~/.claudebox/commands
             # The ~/.claudebox folder is mounted from the host
