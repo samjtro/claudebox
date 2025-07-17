@@ -1,5 +1,27 @@
+<<<<<<< HEAD:claude/CLAUDE.md
 ## Current Environment Tooling
 - @~/.claudebox/tooling.md
+=======
+## Claude Code Permissions
+
+**CRITICAL: Understand the three-tier permission system in ~/.claude/settings.json**
+
+1. **Auto-approved commands** (in `allow` list) - Use directly, NEVER ask for permission:
+   - Git operations: `git add`, `git commit`, `git push`, `git pull`, `git checkout`, `git branch`, `git stash`, `git merge`, `git cherry-pick`, `git fetch`
+   - GitHub CLI: `gh pr create`, `gh pr edit`, `gh pr ready`, `gh pr view`
+   - File operations: `Edit(*)`, `MultiEdit(*)`, `Write(*)`, `NotebookEdit(*)`
+   - Basic bash: `cat`, `echo`, `ls`, `find`, `mkdir`, `mv`, `chmod`, `grep`, `shellcheck`, `timeout`
+   - Special: `Bash(/dev/null)`
+
+2. **Auto-denied commands** (in `deny` list) - Completely blocked, don't try to use:
+   - `Bash(curl:*)` - Cannot use curl commands
+
+3. **Ask-first commands** - Everything else requires permission request before use
+   - Any bash commands not in the allow list
+   - Any other tools or operations not explicitly allowed
+
+**NEVER ask for permission for auto-approved commands** - this creates unnecessary friction and wastes time.
+>>>>>>> parent of 2b16a27 (Fix Docker entrypoint to run Python venv setup in user context):lib/claude/CLAUDE.md
 
 ## Default Coding Behavior
 
@@ -296,7 +318,7 @@ See `/pr-draft` and `/pr-review` commands for detailed workflow guidance.
 
 For tasks involving multiple PRs, create and maintain a roadmap file:
 
-1. **Create task roadmap file** in `.claudebox/tasks/YYYY-MM-DD-task-name.md`
+1. **Create task roadmap file** in `.claude/tasks/YYYY-MM-DD-task-name.md`
 2. **Update throughout development** with progress, learnings, and context
 3. **Update after EVERY significant change**:
    - After creating/merging PRs
