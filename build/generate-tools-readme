@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate DEVELOPER_README.md for the current environment
+# Generate tooling.md for the current environment
 
 # Find the tools-report.sh file - it should be in the mounted source directory
 TOOLS_REPORT_FILE=""
@@ -22,4 +22,4 @@ source "$TOOLS_REPORT_FILE"
 generate_tools_report
 
 # Show where the file was saved
-echo "DEVELOPER_README.md has been generated in ~/.claudebox/"
+echo "tooling.md has been generated in ~/.claudebox/"

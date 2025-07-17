@@ -176,11 +176,11 @@ else
                 fi
             fi
             
-            # Generate DEVELOPER_README.md if profiles have changed
+            # Generate tooling.md if profiles have changed
             if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
                 PROFILES_INI="$HOME/.claudebox/profiles.ini"
-                README_FILE="$HOME/.claudebox/DEVELOPER_README.md"
-                CHECKSUM_FILE="$HOME/.claudebox/.developer_readme_checksum"
+                TOOLING_FILE="$HOME/.claudebox/tooling.md"
+                CHECKSUM_FILE="$HOME/.claudebox/.tooling_checksum"
                 
                 if [ -f "$PROFILES_INI" ]; then
                     # Calculate current checksum of profiles.ini
@@ -188,8 +188,8 @@ else
                     
                     # Check if we need to regenerate
                     NEED_REGENERATE=false
-                    if [ ! -f "$README_FILE" ]; then
-                        # No README exists yet
+                    if [ ! -f "$TOOLING_FILE" ]; then
+                        # No tooling file exists yet
                         NEED_REGENERATE=true
                     elif [ ! -f "$CHECKSUM_FILE" ]; then
                         # No checksum file exists
@@ -206,16 +206,11 @@ else
                     fi
                     
                     if [ "$NEED_REGENERATE" = "true" ]; then
-                        # Generate the README
+                        # Generate the tooling file
                         if generate-tools-readme >/dev/null 2>&1; then
                             # Store the checksum only if generation succeeded
                             echo "$CURRENT_CHECKSUM" > "$CHECKSUM_FILE"
                         fi
-                    fi
-                    
-                    # Create symlink in home directory if README exists and symlink doesn't
-                    if [ -f "$README_FILE" ] && [ ! -e "$HOME/DEVELOPER_README.md" ]; then
-                        ln -s "$README_FILE" "$HOME/DEVELOPER_README.md"
                     fi
                 fi
             fi

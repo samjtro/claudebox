@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Tools Report Generator - Creates DEVELOPER_README.md documenting installed tools
+# Tools Report Generator - Creates tooling.md documenting installed tools
 # ============================================================================
 
-# Generate the developer tools report and save to ~/.claudebox/DEVELOPER_README.md
+# Generate the developer tools report and save to ~/.claudebox/tooling.md
 generate_tools_report() {
     local profiles_ini="/home/claude/.claudebox/profiles.ini"
-    local output_file="/home/claude/.claudebox/DEVELOPER_README.md"
+    local output_file="/home/claude/.claudebox/tooling.md"
     
     # Start the markdown document
     {

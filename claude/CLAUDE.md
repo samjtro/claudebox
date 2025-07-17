@@ -1,3 +1,6 @@
+## Current Environment Tooling
+- @~/.claudebox/tooling.md
+
 ## Default Coding Behavior
 
 **CRITICAL: Always consider TDD discipline before starting any coding task**
