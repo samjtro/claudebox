@@ -1,5 +1,13 @@
 #!/bin/bash
 set -euo pipefail
+
+# Ensure PATH includes user's local bin directory
+# This will be substituted with actual username during build
+export PATH="/home/DOCKERUSER/.local/bin:$PATH"
+
+# Also set PATH for runuser commands
+export RUNUSER_PATH="/home/DOCKERUSER/.local/bin:$PATH"
+
 ENABLE_SUDO=false
 DISABLE_FIREWALL=false
 SHELL_MODE=false
@@ -60,7 +68,7 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
         else
             # Create venv and activate it
             if [ ! -d "$VENV_DIR" ]; then
-                runuser -u DOCKERUSER -- uv venv "$VENV_DIR" || true
+                PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- uv venv "$VENV_DIR" || true
             fi
             
             # Create .venv_flag to indicate venv is set up
@@ -81,7 +89,7 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
         if [ -f "$CONFIG_FILE" ] && grep -qE 'python|ml|datascience' "$CONFIG_FILE"; then
             if [ ! -f "$PYDEV_FLAG" ] && [ -d "$VENV_DIR" ]; then
                 # Deploy Python dev tools
-                runuser -u DOCKERUSER -- bash -c "
+                PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- bash -c "
                     source $VENV_DIR/bin/activate
                     uv pip install black flake8 mypy pytest ipython jupyter numpy pandas matplotlib seaborn scikit-learn
                 " || true
