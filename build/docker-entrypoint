@@ -261,14 +261,14 @@ else
                 if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
                     # No arguments - check if in tmux
                     if [[ -n "${TMUX:-}" ]]; then
-                        claude /tmux
+                        claude /cbox:tmux:activate
                     else
                         claude
                     fi
                 else
                     # Has arguments - check if in tmux
                     if [[ -n "${TMUX:-}" ]]; then
-                        claude "$@" /tmux
+                        claude "$@" /cbox:tmux:activate
                     else
                         claude "$@"
                     fi
