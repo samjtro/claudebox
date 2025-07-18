@@ -223,22 +223,22 @@ run_claudebox_container() {
     )
     
     # Ensure .claude directory exists
-    if [[ ! -d "$PROJECT_CLAUDEBOX_DIR/.claude" ]]; then
-        mkdir -p "$PROJECT_CLAUDEBOX_DIR/.claude"
+    if [[ ! -d "$PROJECT_SLOT_DIR/.claude" ]]; then
+        mkdir -p "$PROJECT_SLOT_DIR/.claude"
     fi
     
-    docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude":/home/$DOCKER_USER/.claude)
+    docker_args+=(-v "$PROJECT_SLOT_DIR/.claude":/home/$DOCKER_USER/.claude)
     
     # Mount .claude.json only if it already exists (from previous session)
-    if [[ -f "$PROJECT_CLAUDEBOX_DIR/.claude.json" ]]; then
-        docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.claude.json":/home/$DOCKER_USER/.claude.json)
+    if [[ -f "$PROJECT_SLOT_DIR/.claude.json" ]]; then
+        docker_args+=(-v "$PROJECT_SLOT_DIR/.claude.json":/home/$DOCKER_USER/.claude.json)
     fi
     
     # Mount .config directory
-    docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.config":/home/$DOCKER_USER/.config)
+    docker_args+=(-v "$PROJECT_SLOT_DIR/.config":/home/$DOCKER_USER/.config)
     
     # Mount .cache directory
-    docker_args+=(-v "$PROJECT_CLAUDEBOX_DIR/.cache":/home/$DOCKER_USER/.cache)
+    docker_args+=(-v "$PROJECT_SLOT_DIR/.cache":/home/$DOCKER_USER/.cache)
     
     # Mount SSH directory
     docker_args+=(-v "$HOME/.ssh":"/home/$DOCKER_USER/.ssh:ro")
@@ -253,7 +253,7 @@ run_claudebox_container() {
     
     # Add environment variables
     local project_name=$(basename "$PROJECT_DIR")
-    local slot_name=$(basename "$PROJECT_CLAUDEBOX_DIR")
+    local slot_name=$(basename "$PROJECT_SLOT_DIR")
     
     # Calculate slot index for hostname
     local slot_index=1  # default if we can't determine

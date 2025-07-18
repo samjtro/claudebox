@@ -230,10 +230,10 @@ main() {
     IMAGE_NAME=$(get_image_name)
     export IMAGE_NAME
     
-    # Set PROJECT_CLAUDEBOX_DIR if we have a slot
+    # Set PROJECT_SLOT_DIR if we have a slot
     if [[ -n "$project_folder_name" ]] && [[ "$project_folder_name" != "NONE" ]]; then
-        PROJECT_CLAUDEBOX_DIR="$PROJECT_PARENT_DIR/$project_folder_name"
-        export PROJECT_CLAUDEBOX_DIR
+        PROJECT_SLOT_DIR="$PROJECT_PARENT_DIR/$project_folder_name"
+        export PROJECT_SLOT_DIR
     fi
     
     # Handle rebuild if requested
@@ -292,11 +292,39 @@ main() {
             # Check profiles
             local profiles_file="$PROJECT_PARENT_DIR/profiles.ini"
             if [[ -f "$profiles_file" ]]; then
-                local profiles_file_hash=$(crc32_file "$profiles_file")
+                # Read current profiles
+                local current_profiles=()
+                while IFS= read -r line; do
+                    [[ -n "$line" ]] && current_profiles+=("$line")
+                done < <(read_profile_section "$profiles_file" "profiles")
+                
+                # Separate Python-only profiles from Docker-affecting profiles
+                local docker_profiles=()
+                local python_only_profiles=("python" "ml" "datascience")
+                
+                for profile in "${current_profiles[@]}"; do
+                    local is_python_only=false
+                    for py_profile in "${python_only_profiles[@]}"; do
+                        if [[ "$profile" == "$py_profile" ]]; then
+                            is_python_only=true
+                            break
+                        fi
+                    done
+                    if [[ "$is_python_only" == "false" ]]; then
+                        docker_profiles+=("$profile")
+                    fi
+                done
+                
+                # Calculate hash only for Docker-affecting profiles
+                local docker_profiles_hash=""
+                if [[ ${#docker_profiles[@]} -gt 0 ]]; then
+                    docker_profiles_hash=$(printf '%s\n' "${docker_profiles[@]}" | sort | cksum | cut -d' ' -f1)
+                fi
+                
                 local image_profiles_crc=$(docker inspect "$IMAGE_NAME" --format '{{index .Config.Labels "claudebox.profiles.crc"}}' 2>/dev/null || echo "")
                 
-                if [[ "$profiles_file_hash" != "$image_profiles_crc" ]]; then
-                    info "Profiles changed, rebuilding..."
+                if [[ "$docker_profiles_hash" != "$image_profiles_crc" ]]; then
+                    info "Docker-affecting profiles changed, rebuilding..."
                     docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
                     need_rebuild=true
                 fi
@@ -352,13 +380,13 @@ main() {
     else
         # No script command - running Claude interactively
         # This is where we load saved default flags
-        if [[ -n "${PROJECT_CLAUDEBOX_DIR:-}" ]]; then
-            local slot_name=$(basename "$PROJECT_CLAUDEBOX_DIR")
+        if [[ -n "${PROJECT_SLOT_DIR:-}" ]]; then
+            local slot_name=$(basename "$PROJECT_SLOT_DIR")
             # parent_folder_name already set in step 8
             local container_name="claudebox-${parent_folder_name}-${slot_name}"
             
             if [[ "$VERBOSE" == "true" ]]; then
-                echo "[DEBUG] PROJECT_CLAUDEBOX_DIR=$PROJECT_CLAUDEBOX_DIR" >&2
+                echo "[DEBUG] PROJECT_SLOT_DIR=$PROJECT_SLOT_DIR" >&2
                 echo "[DEBUG] slot_name=$slot_name" >&2
                 echo "[DEBUG] parent_folder_name=$parent_folder_name" >&2
                 echo "[DEBUG] container_name=$container_name" >&2
@@ -469,8 +497,25 @@ build_docker_image() {
             fi
         done
         
-        if [[ ${#current_profiles[@]} -gt 0 ]]; then
-            profile_hash=$(printf '%s\n' "${current_profiles[@]}" | sort | cksum | cut -d' ' -f1)
+        # Calculate hash only for Docker-affecting profiles
+        local docker_profiles=()
+        local python_only_profiles=("python" "ml" "datascience")
+        
+        for profile in "${current_profiles[@]}"; do
+            local is_python_only=false
+            for py_profile in "${python_only_profiles[@]}"; do
+                if [[ "$profile" == "$py_profile" ]]; then
+                    is_python_only=true
+                    break
+                fi
+            done
+            if [[ "$is_python_only" == "false" ]]; then
+                docker_profiles+=("$profile")
+            fi
+        done
+        
+        if [[ ${#docker_profiles[@]} -gt 0 ]]; then
+            profile_hash=$(printf '%s\n' "${docker_profiles[@]}" | sort | cksum | cut -d' ' -f1)
         fi
     fi
     

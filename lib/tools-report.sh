@@ -178,14 +178,16 @@ _describe_profile() {
             ;;
             
         webdev|javascript)
-            echo "**Web Development Environment**"
+            echo "**JavaScript Development Environment**"
             echo
             echo "JavaScript/TypeScript development stack:"
             echo "- Node.js (via nvm) - JavaScript runtime"
             echo "- npm - Node package manager"
+            echo "- typescript - TypeScript language support"
+            echo "- eslint - JavaScript linter"
+            echo "- prettier - Code formatter"
             echo "- yarn - Alternative package manager"
             echo "- pnpm - Fast, disk space efficient package manager"
-            echo "- Common global tools: typescript, eslint, prettier"
             echo
             ;;
             
@@ -197,7 +199,14 @@ _describe_profile() {
             echo "- uv - Fast Python package installer and resolver"
             echo "- pip - Python package installer"
             echo "- venv - Virtual environment support"
-            echo "- Common tools: pytest, black, flake8, mypy"
+            echo "- ipython - Interactive Python shell"
+            echo "- black - Code formatter"
+            echo "- mypy - Static type checker"
+            echo "- pylint - Code analyzer"
+            echo "- pytest - Testing framework"
+            echo "- ruff - Fast Python linter"
+            echo "- poetry - Dependency management"
+            echo "- pipenv - Package management tool"
             echo
             ;;
             
@@ -325,12 +334,22 @@ _describe_profile() {
             ;;
             
         datascience)
-            echo "**Data Science Tools**"
+            echo "**Data Science Environment**"
             echo
-            echo "Data analysis and visualization:"
+            echo "Complete data science toolkit:"
+            echo "- Python 3 with venv"
             echo "- R - Statistical computing language"
-            echo "- Jupyter (via Python) - Interactive notebooks"
-            echo "- Common R packages available via install.packages()"
+            echo "- jupyter - Interactive notebooks"
+            echo "- notebook - Classic Jupyter notebook"
+            echo "- jupyterlab - JupyterLab interface"
+            echo "- numpy - Numerical computing"
+            echo "- pandas - Data analysis and manipulation"
+            echo "- scipy - Scientific computing"
+            echo "- matplotlib - Plotting library"
+            echo "- seaborn - Statistical data visualization"
+            echo "- scikit-learn - Machine learning library"
+            echo "- statsmodels - Statistical modeling"
+            echo "- plotly - Interactive visualizations"
             echo
             ;;
             
@@ -352,9 +371,13 @@ _describe_profile() {
             echo "**Machine Learning Environment**"
             echo
             echo "Machine learning development:"
-            echo "- Python ML libraries: numpy, pandas, scikit-learn, tensorflow, pytorch"
-            echo "- Jupyter notebooks for experimentation"
-            echo "- CUDA support (if available on host)"
+            echo "- Python 3 with venv"
+            echo "- torch - PyTorch deep learning framework"
+            echo "- transformers - Hugging Face transformers library"
+            echo "- scikit-learn - Machine learning library"
+            echo "- numpy - Numerical computing"
+            echo "- pandas - Data analysis and manipulation"
+            echo "- matplotlib - Plotting library"
             echo
             ;;
             

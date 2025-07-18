@@ -68,7 +68,7 @@ _cmd_info() {
     local project_folder_name
     project_folder_name=$(get_project_folder_name "$PROJECT_DIR")
     IMAGE_NAME="claudebox-${project_folder_name}"
-    PROJECT_CLAUDEBOX_DIR="$HOME/.claudebox/projects/$project_folder_name"
+    PROJECT_SLOT_DIR="$HOME/.claudebox/projects/$project_folder_name"
 
     cecho "╔═══════════════════════════════════════════════════════════════════╗" "$CYAN"
     cecho "║                    ClaudeBox Information Panel                    ║" "$CYAN"
@@ -79,7 +79,7 @@ _cmd_info() {
     cecho "📁 Current Project" "$WHITE"
     echo "   Path:       $PROJECT_DIR"
     echo "   Project ID: $project_folder_name"
-    echo "   Data Dir:   $PROJECT_CLAUDEBOX_DIR"
+    echo "   Data Dir:   $PROJECT_SLOT_DIR"
     echo
 
     # ClaudeBox Installation

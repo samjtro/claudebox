@@ -87,15 +87,35 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
         # Check if Python profile is added and deploy Python dev tools if needed
         if [ -f "$CONFIG_FILE" ] && grep -qE 'python|ml|datascience' "$CONFIG_FILE"; then
             if [ ! -f "$PYDEV_FLAG" ] && [ -d "$VENV_DIR" ]; then
-                # Deploy Python dev tools
-                PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- bash -c "
-                    source $VENV_DIR/bin/activate
-                    uv pip install black flake8 mypy pytest ipython jupyter numpy pandas matplotlib seaborn scikit-learn
-                " || true
+                # Deploy Python dev tools based on profile
+                local python_packages=""
                 
-                # Create .pydev_flag to indicate Python dev tools are deployed
-                if [ $? -eq 0 ]; then
-                    runuser -u DOCKERUSER -- touch "$PYDEV_FLAG"
+                # Base Python profile packages
+                if grep -q 'python' "$CONFIG_FILE"; then
+                    python_packages="ipython black mypy pylint pytest ruff poetry pipenv"
+                fi
+                
+                # ML profile packages
+                if grep -q 'ml' "$CONFIG_FILE"; then
+                    python_packages="$python_packages torch transformers scikit-learn numpy pandas matplotlib"
+                fi
+                
+                # Data science profile packages
+                if grep -q 'datascience' "$CONFIG_FILE"; then
+                    python_packages="$python_packages jupyter notebook jupyterlab numpy pandas scipy matplotlib seaborn scikit-learn statsmodels plotly"
+                fi
+                
+                # Remove duplicates and install
+                if [ -n "$python_packages" ]; then
+                    PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- bash -c "
+                        source $VENV_DIR/bin/activate
+                        uv pip install $python_packages
+                    " || true
+                    
+                    # Create .pydev_flag to indicate Python dev tools are deployed
+                    if [ $? -eq 0 ]; then
+                        runuser -u DOCKERUSER -- touch "$PYDEV_FLAG"
+                    fi
                 fi
             fi
         fi

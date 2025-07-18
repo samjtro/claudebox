@@ -141,7 +141,37 @@ _cmd_add() {
         cecho "All active profiles: ${all_profiles[*]}" "$GREEN"
     fi
     echo
-    warn "The Docker image will be rebuilt with new profiles on next run."
+    
+    # Check if any Python-related profiles were added
+    local python_profiles_added=false
+    for profile in "${selected[@]}"; do
+        if [[ "$profile" == "python" ]] || [[ "$profile" == "ml" ]] || [[ "$profile" == "datascience" ]]; then
+            python_profiles_added=true
+            break
+        fi
+    done
+    
+    # If Python profiles were added, remove the pydev flag to trigger reinstall
+    if [[ "$python_profiles_added" == "true" ]]; then
+        local parent_dir=$(get_parent_dir "$PROJECT_DIR")
+        if [[ -f "$parent_dir/.pydev_flag" ]]; then
+            rm -f "$parent_dir/.pydev_flag"
+            info "Python packages will be updated on next run"
+        fi
+    fi
+    
+    # Only show rebuild message for non-Python profiles
+    local needs_rebuild=false
+    for profile in "${selected[@]}"; do
+        if [[ "$profile" != "python" ]] && [[ "$profile" != "ml" ]] && [[ "$profile" != "datascience" ]]; then
+            needs_rebuild=true
+            break
+        fi
+    done
+    
+    if [[ "$needs_rebuild" == "true" ]]; then
+        warn "The Docker image will be rebuilt with new profiles on next run."
+    fi
     echo
 
     if [[ ${#remaining[@]} -gt 0 ]]; then

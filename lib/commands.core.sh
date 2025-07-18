@@ -60,8 +60,8 @@ _cmd_shell() {
         fi
         
         IMAGE_NAME=$(get_image_name)
-        PROJECT_CLAUDEBOX_DIR="$PROJECT_PARENT_DIR/$project_folder_name"
-        export PROJECT_CLAUDEBOX_DIR
+        PROJECT_SLOT_DIR="$PROJECT_PARENT_DIR/$project_folder_name"
+        export PROJECT_SLOT_DIR
     fi
     
     # Check if image exists

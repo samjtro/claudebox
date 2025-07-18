@@ -411,8 +411,8 @@ Current directory: $PWD"
         fi
         
         IMAGE_NAME=$(get_image_name)
-        PROJECT_CLAUDEBOX_DIR="$PROJECT_PARENT_DIR/$project_folder_name"
-        export PROJECT_CLAUDEBOX_DIR
+        PROJECT_SLOT_DIR="$PROJECT_PARENT_DIR/$project_folder_name"
+        export PROJECT_SLOT_DIR
     fi
     
     if [[ ${#window_panes[@]} -gt 0 ]]; then
@@ -451,7 +451,7 @@ Have: $ready_slots activated slots"
     fi
     
     # Generate container name
-    local slot_name=$(basename "$PROJECT_CLAUDEBOX_DIR")
+    local slot_name=$(basename "$PROJECT_SLOT_DIR")
     local parent_folder_name=$(generate_parent_folder_name "$PROJECT_DIR")
     local container_name="claudebox-${parent_folder_name}-${slot_name}"
     

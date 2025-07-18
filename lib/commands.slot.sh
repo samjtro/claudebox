@@ -56,7 +56,7 @@ _cmd_slot() {
     
     # Set up environment for this specific slot
     local parent_dir=$(get_parent_dir "$PROJECT_DIR")
-    export PROJECT_CLAUDEBOX_DIR="$slot_dir"
+    export PROJECT_SLOT_DIR="$slot_dir"
     export PROJECT_PARENT_DIR="$parent_dir"
     export IMAGE_NAME=$(get_image_name)
     export CLAUDEBOX_SLOT_NUMBER="$slot_num"
