@@ -80,6 +80,15 @@ init_project_dir() {
     setup_claude_agent_command "$parent"
     # Sync commands to project
     sync_commands_to_project "$parent"
+    
+    # Copy common.sh to project parent directory if it doesn't exist
+    local common_sh_target="$parent/common.sh"
+    if [[ ! -f "$common_sh_target" ]]; then
+        local common_sh_source="${CLAUDEBOX_SCRIPT_DIR:-${SCRIPT_DIR}}/lib/common.sh"
+        if [[ -f "$common_sh_source" ]]; then
+            cp "$common_sh_source" "$common_sh_target"
+        fi
+    fi
 }
 
 # Read/write per-project counter with locking

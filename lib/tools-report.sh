@@ -9,12 +9,6 @@ generate_tools_report() {
     
     # Start the markdown document
     {
-        echo "# Development Environment Tools"
-        echo
-        echo "This document describes the development tools installed in this ClaudeBox container."
-        echo "Generated on: $(date '+%Y-%m-%d %H:%M:%S')"
-        echo
-        
         # Check if profiles.ini exists
         if [[ -f "$profiles_ini" ]]; then
             # Parse active profiles

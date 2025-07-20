@@ -171,7 +171,12 @@ if [[ "${SHELL_MODE:-false}" == "true" ]]; then
         # For tmux, create an init script that shows logo then starts shell
         cat > /tmp/tmux-init.sh << 'EOF'
 #!/bin/bash
-source /home/DOCKERUSER/.claudebox/source/lib/common.sh 2>/dev/null
+export PATH="/home/DOCKERUSER/.local/bin:$PATH"
+if [ -d /home/DOCKERUSER/.claudebox/.venv ]; then
+    export PATH="/home/DOCKERUSER/.claudebox/.venv/bin:$PATH"
+    export VIRTUAL_ENV="/home/DOCKERUSER/.claudebox/.venv"
+fi
+source /home/DOCKERUSER/.claudebox/common.sh 2>/dev/null
 logo_header 2>/dev/null
 exec /bin/zsh
 EOF
@@ -180,7 +185,7 @@ EOF
         exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec tmux new-session /tmp/tmux-init.sh"
     else
         # For non-tmux, show logo before starting shell
-        exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && source /home/DOCKERUSER/.claudebox/source/lib/common.sh 2>/dev/null && logo_header 2>/dev/null; exec /bin/zsh"
+        exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && export PATH=\"/home/DOCKERUSER/.local/bin:\$PATH\" && [ -d /home/DOCKERUSER/.claudebox/.venv ] && export PATH=\"/home/DOCKERUSER/.claudebox/.venv/bin:\$PATH\" && export VIRTUAL_ENV=\"/home/DOCKERUSER/.claudebox/.venv\"; cd /workspace && source /home/DOCKERUSER/.claudebox/common.sh 2>/dev/null && logo_header 2>/dev/null; exec /bin/zsh"
     fi
 else
     # Claude mode - handle wrapper logic directly here
@@ -235,6 +240,15 @@ else
             
             # tooling.md generation is handled in root section above
             
+            # Activate Python venv if it exists
+            if [ -d "$HOME/.claudebox/.venv" ]; then
+                export PATH="$HOME/.claudebox/.venv/bin:$PATH"
+                export VIRTUAL_ENV="$HOME/.claudebox/.venv"
+            fi
+            
+            # Ensure uv is in PATH
+            export PATH="$HOME/.local/bin:$PATH"
+            
             # Create symlink from ~/.claude/commands to ~/.claudebox/commands
             # The ~/.claudebox folder is mounted from the host
             if [ -d "$HOME/.claudebox/commands" ]; then
@@ -281,14 +295,24 @@ else
                 if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
                     # No arguments - check if in tmux
                     if [[ -n "${TMUX:-}" ]]; then
-                        claude /cbox:tmux:activate
+                        # Pass the pane ID if we have it
+                        if [[ -n "${CLAUDEBOX_TMUX_PANE:-}" ]]; then
+                            claude /cbox:tmux:activate "${CLAUDEBOX_TMUX_PANE}"
+                        else
+                            claude /cbox:tmux:activate
+                        fi
                     else
                         claude
                     fi
                 else
                     # Has arguments - check if in tmux
                     if [[ -n "${TMUX:-}" ]]; then
-                        claude "$@" /cbox:tmux:activate
+                        # Pass the pane ID if we have it
+                        if [[ -n "${CLAUDEBOX_TMUX_PANE:-}" ]]; then
+                            claude "$@" /cbox:tmux:activate "${CLAUDEBOX_TMUX_PANE}"
+                        else
+                            claude "$@" /cbox:tmux:activate
+                        fi
                     else
                         claude "$@"
                     fi

@@ -321,9 +321,9 @@ main() {
                     docker_profiles_hash=$(printf '%s\n' "${docker_profiles[@]}" | sort | cksum | cut -d' ' -f1)
                 fi
                 
-                local image_profiles_crc=$(docker inspect "$IMAGE_NAME" --format '{{index .Config.Labels "claudebox.profiles.crc"}}' 2>/dev/null || echo "")
+                local image_profiles_hash=$(docker inspect "$IMAGE_NAME" --format '{{index .Config.Labels "claudebox.profiles"}}' 2>/dev/null || echo "")
                 
-                if [[ "$docker_profiles_hash" != "$image_profiles_crc" ]]; then
+                if [[ "$docker_profiles_hash" != "$image_profiles_hash" ]]; then
                     info "Docker-affecting profiles changed, rebuilding..."
                     docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
                     need_rebuild=true

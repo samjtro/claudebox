@@ -219,7 +219,6 @@ run_claudebox_container() {
         -w /workspace
         -v "$PROJECT_DIR":/workspace
         -v "$PROJECT_PARENT_DIR":/home/$DOCKER_USER/.claudebox
-        -v "$HOME/.claudebox/source":/home/$DOCKER_USER/.claudebox/source:ro
     )
     
     # Ensure .claude directory exists
@@ -270,6 +269,7 @@ run_claudebox_container() {
         -e "VERBOSE=${VERBOSE:-false}"
         -e "CLAUDEBOX_WRAP_TMUX=${CLAUDEBOX_WRAP_TMUX:-false}"
         -e "CLAUDEBOX_PANE_NAME=${CLAUDEBOX_PANE_NAME:-}"
+        -e "CLAUDEBOX_TMUX_PANE=${CLAUDEBOX_TMUX_PANE:-}"
         --cap-add NET_ADMIN
         --cap-add NET_RAW
         "$IMAGE_NAME"

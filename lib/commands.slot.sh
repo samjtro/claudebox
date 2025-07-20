@@ -71,6 +71,13 @@ _cmd_slot() {
     local parent_folder_name=$(generate_parent_folder_name "$PROJECT_DIR")
     local container_name="claudebox-${parent_folder_name}-${slot_name}"
     
+    # If we're in tmux, get the pane ID and pass it through
+    local tmux_pane_id=""
+    if [[ -n "${TMUX:-}" ]]; then
+        tmux_pane_id=$(tmux display-message -p '#{pane_id}')
+        export CLAUDEBOX_TMUX_PANE="$tmux_pane_id"
+    fi
+    
     # Run container with remaining arguments passed to claude
     run_claudebox_container "$container_name" "interactive" "$@"
 }
