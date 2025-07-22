@@ -145,10 +145,20 @@ main() {
         1) install_docker ;;
         2)
             warn "Docker is installed but not running."
-            warn "Starting Docker requires sudo privileges..."
-            sudo systemctl start docker
-            docker info || error "Failed to start Docker"
-            docker ps || configure_docker_nonroot
+            case "$(uname -s)" in
+                Darwin)
+                    error "Docker Desktop is not running. Please start Docker Desktop from Applications."
+                    ;;
+                Linux)
+                    warn "Starting Docker requires sudo privileges..."
+                    sudo systemctl start docker
+                    docker info || error "Failed to start Docker"
+                    docker ps || configure_docker_nonroot
+                    ;;
+                *)
+                    error "Unsupported OS: $(uname -s)"
+                    ;;
+            esac
             ;;
         3)
             warn "Docker requires sudo. Setting up non-root access..."
