@@ -146,7 +146,7 @@ EOF
 
 # Copy init-firewall script
 COPY --chmod=755 init-firewall /home/$USERNAME/init-firewall
-RUN chown $USERNAME:$USERNAME /home/$USERNAME/init-firewall
+RUN chown $USER_ID:$GROUP_ID /home/$USERNAME/init-firewall
 
 # Copy generate-tools-readme script and tools-report.sh library
 COPY --chmod=755 generate-tools-readme /usr/local/bin/generate-tools-readme
