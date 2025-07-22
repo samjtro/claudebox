@@ -55,7 +55,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -a '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' \
     -x
 
-RUN --mount=type=cache,target=/home/$USERNAME/.cache/uv,uid=1000,gid=1000 \
+RUN --mount=type=cache,target=/home/$USERNAME/.cache/uv,uid=$USER_ID,gid=$GROUP_ID \
     curl -LsSf https://astral.sh/uv/install.sh | sh
 
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && \
@@ -74,7 +74,7 @@ ENV DEVCONTAINER=true
 ENV SHELL=/bin/zsh
 
 ENV NVM_DIR="/home/$USERNAME/.nvm"
-RUN --mount=type=cache,target=/tmp/downloads,uid=1000,gid=1000 \
+RUN --mount=type=cache,target=/tmp/downloads,uid=$USER_ID,gid=$GROUP_ID \
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 
 RUN bash -c "source $NVM_DIR/nvm.sh && \
@@ -91,7 +91,7 @@ RUN echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc && \
     echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc && \
     echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.bashrc
 
-RUN --mount=type=cache,target=/home/$USERNAME/.npm,uid=1000,gid=1000 \
+RUN --mount=type=cache,target=/home/$USERNAME/.npm,uid=$USER_ID,gid=$GROUP_ID \
     bash -c "source $NVM_DIR/nvm.sh && \
     nvm use default && \
     npm install -g @anthropic-ai/claude-code"
