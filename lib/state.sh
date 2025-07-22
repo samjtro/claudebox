@@ -30,6 +30,19 @@ update_symlink() {
     # Create new symlink
     if ln -s "$SCRIPT_PATH" "$LINK_TARGET"; then
         success "Symlink updated: $LINK_TARGET → $SCRIPT_PATH"
+        
+        # Check if the directory is in PATH
+        if [[ ":$PATH:" != *":$(dirname "$LINK_TARGET"):"* ]]; then
+            echo ""
+            warn "IMPORTANT: $(dirname "$LINK_TARGET") is not in your PATH"
+            info "To use the 'claudebox' command, add this line to your ~/.zshrc or ~/.bashrc:"
+            echo ""
+            echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+            echo ""
+            info "Then reload your shell or run: source ~/.zshrc"
+            echo ""
+            exit 0
+        fi
     else
         warn "Could not create symlink at $LINK_TARGET"
         warn "Try running with sudo or ensure $(dirname "$LINK_TARGET") is writable"
