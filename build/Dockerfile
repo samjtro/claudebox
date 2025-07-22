@@ -29,11 +29,11 @@ ENV LANG=en_US.UTF-8 \
 RUN groupadd -g $GROUP_ID $USERNAME || true && \
     useradd -m -u $USER_ID -g $GROUP_ID -s /bin/bash $USERNAME
 
-RUN --mount=type=cache,target=/tmp/downloads \
-    ARCH=$(dpkg --print-architecture) && \
-    wget -q -O /tmp/downloads/git-delta_${DELTA_VERSION}_${ARCH}.deb \
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget -q -O /tmp/git-delta_${DELTA_VERSION}_${ARCH}.deb \
         https://github.com/dandavison/delta/releases/download/${DELTA_VERSION}/git-delta_${DELTA_VERSION}_${ARCH}.deb && \
-    dpkg -i /tmp/downloads/git-delta_${DELTA_VERSION}_${ARCH}.deb
+    dpkg -i /tmp/git-delta_${DELTA_VERSION}_${ARCH}.deb && \
+    rm /tmp/git-delta_${DELTA_VERSION}_${ARCH}.deb
 
 USER $USERNAME
 WORKDIR /home/$USERNAME
@@ -55,8 +55,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -a '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' \
     -x
 
-RUN --mount=type=cache,target=/home/$USERNAME/.cache/uv,uid=$USER_ID,gid=$GROUP_ID \
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && \
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
@@ -74,8 +73,7 @@ ENV DEVCONTAINER=true
 ENV SHELL=/bin/zsh
 
 ENV NVM_DIR="/home/$USERNAME/.nvm"
-RUN --mount=type=cache,target=/tmp/downloads,uid=$USER_ID,gid=$GROUP_ID \
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 
 RUN bash -c "source $NVM_DIR/nvm.sh && \
     if [[ \"$NODE_VERSION\" == '--lts' ]]; then \
@@ -91,8 +89,7 @@ RUN echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc && \
     echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc && \
     echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.bashrc
 
-RUN --mount=type=cache,target=/home/$USERNAME/.npm,uid=$USER_ID,gid=$GROUP_ID \
-    bash -c "source $NVM_DIR/nvm.sh && \
+RUN bash -c "source $NVM_DIR/nvm.sh && \
     nvm use default && \
     npm install -g @anthropic-ai/claude-code"
 
