@@ -4,6 +4,7 @@
 # Commands: save, unlink, rebuild, tmux, open
 # System utilities and special features
 
+
 _cmd_save() {
     local defaults_file="${CLAUDEBOX_HOME}/default-flags"
 
@@ -137,15 +138,17 @@ _cmd_tmux() {
                 local slot_name=$(generate_container_name "$PROJECT_DIR" "$idx")
                 local slot_dir="$parent_dir/$slot_name"
                 
-                if [[ -d "$slot_dir" ]] && [[ -f "$slot_dir/.claude/.credentials.json" ]]; then
-                    ((authenticated_count++)) || true
+                if [[ -d "$slot_dir" ]]; then
+                    ((available_count++)) || true
+                    if [[ -f "$slot_dir/.claude/.credentials.json" ]]; then
+                        ((authenticated_count++)) || true
+                    fi
                 fi
             done
-            available_count=$authenticated_count
         fi
         
         cecho "Available Slots:" "$GREEN"
-        printf "  You have %d authenticated slot(s) ready to use\n" "$available_count"
+        printf "  You have %d slot(s) (%d authenticated)\n" "$available_count" "$authenticated_count"
         echo
         printf "  %-20s %s\n" "claudebox slots" "Manage slots for this project"
         echo
@@ -433,22 +436,6 @@ Current directory: $PWD"
         layout=""
     fi
     
-    if [[ -n "$layout" ]]; then
-        
-        # Validate we have enough ready (authenticated) slots
-        local ready_slots=0
-        for slot_dir in "$PROJECT_PARENT_DIR"/*/; do
-            if [[ -d "$slot_dir" ]] && [[ -f "$slot_dir/.claude/.credentials.json" ]]; then
-                ((ready_slots++)) || true
-            fi
-        done
-        
-        if [[ $ready_slots -lt $total_slots_needed ]]; then
-            error "Not enough activated slots
-Need: $total_slots_needed
-Have: $ready_slots activated slots"
-        fi
-    fi
     
     # Generate container name
     local slot_name=$(basename "$PROJECT_SLOT_DIR")
@@ -464,7 +451,7 @@ Have: $ready_slots activated slots"
         # Create new tmux session with layout if specified
         if [[ -n "$layout" ]]; then
                 
-                # Get available ready slots (authenticated)
+                # Get available slots (not currently running)
                 local available_slots=()
                 local max_slot=$(read_counter "$PROJECT_PARENT_DIR")
                 
@@ -472,7 +459,8 @@ Have: $ready_slots activated slots"
                     local slot_name=$(generate_container_name "$PROJECT_DIR" "$idx")
                     local slot_dir="$PROJECT_PARENT_DIR/$slot_name"
                     
-                    if [[ -d "$slot_dir" ]] && [[ -f "$slot_dir/.claude/.credentials.json" ]]; then
+                    # Check if slot exists and is not currently running
+                    if [[ -d "$slot_dir" ]] && ! docker ps --format "{{.Names}}" | grep -q "^claudebox-.*-${slot_name}$"; then
                         available_slots+=("$idx")
                     fi
                 done
@@ -483,41 +471,93 @@ Have: $ready_slots activated slots"
                 # Simple layout - use quick tmux without persistent session
                 if [[ "$layout" =~ ^[0-9]+$ ]] && [[ $layout -le 4 ]]; then
                     # For simple layouts (1-4 panes), create non-persistent session
-                    local tmux_cmd="tmux new-session"
-                    
-                    # Add first pane
-                    local first_slot="${available_slots[0]}"
                     local session_name="claudebox-$(basename "$PROJECT_DIR")"
-                    # Pass environment variables to the first pane using env
-                    tmux_cmd="$tmux_cmd -s $session_name 'env CLAUDEBOX_SLOT_NUMBER=$first_slot $SCRIPT_PATH slot $first_slot'"
-                    tmux_cmd="$tmux_cmd \\; rename-window 'ClaudeBox Multi'"
-                    slot_index=1
+                    local captured_panes=()
                     
-                    # Add additional panes
+                    # Create first pane and capture its ID atomically
+                    local first_slot="${available_slots[0]}"
+                    # new-session doesn't support -P -F, so we create it and get the pane ID immediately after
+                    if ! tmux new-session -s "$session_name" -d "env CLAUDEBOX_SLOT_NUMBER=$first_slot $SCRIPT_PATH slot $first_slot"; then
+                        error "Failed to create tmux session. Make sure slot $first_slot exists."
+                    fi
+                    tmux rename-window -t "$session_name" 'ClaudeBox Multi'
+                    
+                    # Get the first pane ID (session creation always creates exactly one pane)
+                    local first_pane_id=$(tmux display -t "$session_name:0.0" -p '#{pane_id}')
+                    captured_panes+=("$first_pane_id")
+                    
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        echo "[DEBUG] Created first pane: $first_pane_id" >&2
+                    fi
+                    
+                    # Create additional panes one by one and capture their IDs atomically
+                    local slot_index=1
                     for ((i=1; i<$layout; i++)); do
                         local slot="${available_slots[$slot_index]}"
-                        tmux_cmd="$tmux_cmd \\; split-window -e CLAUDEBOX_SLOT_NUMBER=$slot '$SCRIPT_PATH slot $slot'"
+                        
+                        # Split and create new pane - capture ID atomically with -P -F
+                        local new_pane_id=$(tmux split-window -t "$session_name" -e "CLAUDEBOX_SLOT_NUMBER=$slot" -P -F '#{pane_id}' "$SCRIPT_PATH slot $slot")
+                        
+                        captured_panes+=("$new_pane_id")
+                        if [[ "$VERBOSE" == "true" ]]; then
+                            echo "[DEBUG] Created pane $((i+1)): $new_pane_id" >&2
+                        fi
+                        
                         ((slot_index++)) || true
                     done
                     
-                    # Enable pane border status (Claude Code will manage titles)
-                    tmux_cmd="$tmux_cmd \\; set-option -g pane-border-status top"
+                    # Enable pane border status
+                    tmux set-option -t "$session_name" -g pane-border-status top
                     
                     # Add tiled layout if more than 2 panes
                     if [[ $layout -gt 2 ]]; then
-                        tmux_cmd="$tmux_cmd \\; select-layout tiled"
+                        tmux select-layout -t "$session_name" tiled
                     fi
                     
-                    # Execute the command
-                    eval "$tmux_cmd"
+                    # Wait for containers and Claude to be ready
+                    sleep 8
+                    
+                    # Send activate command only to authenticated slots
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        echo "[DEBUG] Checking authentication for ${#captured_panes[@]} panes" >&2
+                    fi
+                    
+                    for ((i=0; i<${#captured_panes[@]}; i++)); do
+                        local pane_id="${captured_panes[$i]}"
+                        local slot_num="${available_slots[$i]}"
+                        local slot_name=$(generate_container_name "$PROJECT_DIR" "$slot_num")
+                        local slot_dir="$PROJECT_PARENT_DIR/$slot_name"
+                        
+                        # Check if this slot is authenticated
+                        if [[ -f "$slot_dir/.claude/.credentials.json" ]]; then
+                            if [[ "$VERBOSE" == "true" ]]; then
+                                echo "[DEBUG] Sending activate command to authenticated slot $slot_num (pane $pane_id)" >&2
+                            fi
+                            tmux send-keys -t "$pane_id" C-c  # Clear any partial input first
+                            sleep 0.1
+                            tmux send-keys -t "$pane_id" "/cbox:tmux:activate $pane_id"
+                            sleep 0.1
+                            tmux send-keys -t "$pane_id" Enter
+                        else
+                            if [[ "$VERBOSE" == "true" ]]; then
+                                echo "[DEBUG] Skipping unauthenticated slot $slot_num (pane $pane_id)" >&2
+                            fi
+                        fi
+                    done
+                    
+                    # Attach to the session
+                    tmux attach-session -t "$session_name"
+                    
+
                     exit 0
                 else
-                    # Complex layout - multiple windows
-                    # For now, just create a simple session with all panes in one window
-                    local tmux_cmd="tmux new-session"
+                    # Complex layout - multiple windows/panes
+                    local session_name="claudebox-$(basename "$PROJECT_DIR")"
+                    local captured_panes=()
+                    local slot_index=0
+                    local first_created=false
                     
-                    # Add all panes
-                    local pane_count=0
+                    # Create panes one by one, capturing IDs atomically
                     for panes in "${window_panes[@]}"; do
                         for ((i=0; i<panes; i++)); do
                             if [[ $slot_index -ge ${#available_slots[@]} ]]; then
@@ -526,30 +566,101 @@ Have: $ready_slots activated slots"
                             
                             local slot="${available_slots[$slot_index]}"
                             
-                            if [[ $pane_count -eq 0 ]]; then
-                                local session_name="claudebox-$(basename "$PROJECT_DIR")"
-                                tmux_cmd="$tmux_cmd -s $session_name '$SCRIPT_PATH slot $slot'"
-                                tmux_cmd="$tmux_cmd \\; set-environment CLAUDEBOX_SLOT_NUMBER $slot"
-                                tmux_cmd="$tmux_cmd \\; rename-window 'ClaudeBox Multi'"
+                            if [[ "$first_created" == "false" ]]; then
+                                # Create the session with first pane
+                                tmux new-session -s "$session_name" -d "env CLAUDEBOX_SLOT_NUMBER=$slot $SCRIPT_PATH slot $slot"
+                                tmux rename-window -t "$session_name" 'ClaudeBox Multi'
+                                
+                                # Get the first pane ID (session creation always creates exactly one pane)
+                                local first_pane_id=$(tmux display -t "$session_name:0.0" -p '#{pane_id}')
+                                captured_panes+=("$first_pane_id")
+                                
+                                if [[ "$VERBOSE" == "true" ]]; then
+                                    echo "[DEBUG] Created first pane: $first_pane_id" >&2
+                                fi
+                                
+                                first_created=true
                             else
-                                tmux_cmd="$tmux_cmd \\; split-window -e CLAUDEBOX_SLOT_NUMBER=$slot '$SCRIPT_PATH slot $slot'"
+                                # Split and create new pane - capture ID atomically with -P -F
+                                local new_pane_id=$(tmux split-window -t "$session_name" -e "CLAUDEBOX_SLOT_NUMBER=$slot" -P -F '#{pane_id}' "$SCRIPT_PATH slot $slot")
+                                
+                                captured_panes+=("$new_pane_id")
+                                if [[ "$VERBOSE" == "true" ]]; then
+                                    echo "[DEBUG] Created pane $((${#captured_panes[@]})): $new_pane_id" >&2
+                                fi
                             fi
                             
                             ((slot_index++)) || true
-                            ((pane_count++)) || true
                         done
                     done
                     
-                    # Enable pane border status (Claude Code will manage titles)
-                    tmux_cmd="$tmux_cmd \\; set-option -g pane-border-status top"
+                    # Enable pane border status
+                    tmux set-option -t "$session_name" -g pane-border-status top
                     
-                    # Add tiled layout
-                    if [[ $pane_count -gt 2 ]]; then
-                        tmux_cmd="$tmux_cmd \\; select-layout tiled"
+                    # Add tiled layout if more than 2 panes
+                    if [[ ${#captured_panes[@]} -gt 2 ]]; then
+                        tmux select-layout -t "$session_name" tiled
                     fi
                     
-                    # Execute the command
-                    eval "$tmux_cmd"
+                    # Wait for containers to start
+                    sleep 2
+                    
+                    # Wait for all slots to have running containers (like slots command does)
+                    local all_ready=false
+                    local wait_count=0
+                    while [[ "$all_ready" == "false" ]] && [[ $wait_count -lt 30 ]]; do
+                        all_ready=true
+                        for ((idx=0; idx<$slot_index; idx++)); do
+                            local slot="${available_slots[$idx]}"
+                            local slot_name=$(generate_container_name "$PROJECT_DIR" "$slot")
+                            
+                            # Check if container is running - exactly like slots command
+                            if ! docker ps --format "{{.Names}}" | grep -q "^claudebox-.*-${slot_name}$"; then
+                                all_ready=false
+                                break
+                            fi
+                        done
+                        
+                        if [[ "$all_ready" == "false" ]]; then
+                            sleep 0.5
+                            ((wait_count++)) || true
+                        fi
+                    done
+
+                    # Additional wait to ensure Claude is fully started inside containers
+                    sleep 6
+                    
+                    # Send activate command only to authenticated slots
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        echo "[DEBUG] Checking authentication for ${#captured_panes[@]} panes" >&2
+                    fi
+                    
+                    for ((i=0; i<${#captured_panes[@]}; i++)); do
+                        local pane_id="${captured_panes[$i]}"
+                        local slot_num="${available_slots[$i]}"
+                        local slot_name=$(generate_container_name "$PROJECT_DIR" "$slot_num")
+                        local slot_dir="$PROJECT_PARENT_DIR/$slot_name"
+                        
+                        # Check if this slot is authenticated
+                        if [[ -f "$slot_dir/.claude/.credentials.json" ]]; then
+                            if [[ "$VERBOSE" == "true" ]]; then
+                                echo "[DEBUG] Sending activate command to authenticated slot $slot_num (pane $pane_id)" >&2
+                            fi
+                            tmux send-keys -t "$pane_id" C-c  # Clear any partial input first
+                            sleep 0.1
+                            tmux send-keys -t "$pane_id" "/cbox:tmux:activate $pane_id"
+                            sleep 0.1
+                            tmux send-keys -t "$pane_id" Enter
+                        else
+                            if [[ "$VERBOSE" == "true" ]]; then
+                                echo "[DEBUG] Skipping unauthenticated slot $slot_num (pane $pane_id)" >&2
+                            fi
+                        fi
+                    done
+                    
+                    # Attach to the session
+                    tmux attach-session -t "$session_name"
+                    
                     exit 0
                 fi
         else

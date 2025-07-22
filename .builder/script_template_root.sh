@@ -37,6 +37,6 @@ else
 fi
 
 # 5) Launch main.sh from source directory
-exec bash "$SOURCE_DIR/main.sh" "$@"
+CLAUDEBOX_INSTALLER_RUN="true" exec bash "$SOURCE_DIR/main.sh" "$@"
 
 __ARCHIVE_BELOW__

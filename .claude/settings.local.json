@@ -4,7 +4,8 @@
       "Bash(tmux list-panes:*)",
       "Bash(tmux list-windows:*)",
       "Bash(ls:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(grep:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

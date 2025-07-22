@@ -46,6 +46,30 @@ for lib in cli common env os state project docker config commands welcome prefli
     source "${LIB_DIR}/${lib}.sh"
 done
 
+# Show first-time welcome message
+show_first_time_welcome() {
+    logo_small
+    printf '\n'
+    cecho "Welcome to ClaudeBox!" "$CYAN"
+    printf '\n'
+    printf '%s\n' "ClaudeBox is ready to use. Here's how to get started:"
+    printf '\n'
+    printf '%s\n' "1. Navigate to your project directory:"
+    printf "   ${CYAN}%s${NC}\n" "cd /path/to/your/project"
+    printf '\n'
+    printf '%s\n' "2. Create your first container slot:"
+    printf "   ${CYAN}%s${NC}\n" "claudebox create"
+    printf '\n'
+    printf '%s\n' "3. Launch Claude:"
+    printf "   ${CYAN}%s${NC}\n" "claudebox"
+    printf '\n'
+    printf '%s\n' "Other useful commands:"
+    printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox help" "Show all available commands"
+    printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox profiles" "List available development profiles"
+    printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox projects" "List all ClaudeBox projects"
+    printf '\n'
+}
+
 # -------------------------------------------------------------------- main() --
 main() {
     # Save original arguments for later use with saved flags
@@ -172,31 +196,13 @@ main() {
             --build-arg DELTA_VERSION="$DELTA_VERSION" \
             -f "$core_dockerfile" -t "$core_image" "$build_context" || error "Failed to build core image"
             
+            
         # Check if this is truly a first-time setup (no projects exist)
         local project_count=$(ls -1d "$HOME/.claudebox/projects"/*/ 2>/dev/null | wc -l)
         
         if [[ $project_count -eq 0 ]]; then
             # First-time user - show welcome menu
-            logo_small
-            printf '\n'
-            cecho "Welcome to ClaudeBox!" "$CYAN"
-            printf '\n'
-            printf '%s\n' "ClaudeBox is ready to use. Here's how to get started:"
-            printf '\n'
-            printf '%s\n' "1. Navigate to your project directory:"
-            printf "   ${CYAN}%s${NC}\n" "cd /path/to/your/project"
-            printf '\n'
-            printf '%s\n' "2. Create your first container slot:"
-            printf "   ${CYAN}%s${NC}\n" "claudebox create"
-            printf '\n'
-            printf '%s\n' "3. Launch Claude:"
-            printf "   ${CYAN}%s${NC}\n" "claudebox"
-            printf '\n'
-            printf '%s\n' "Other useful commands:"
-            printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox help" "Show all available commands"
-            printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox profiles" "List available development profiles"
-            printf "  ${CYAN}%-20s${NC} - %s\n" "claudebox projects" "List all ClaudeBox projects"
-            printf '\n'
+            show_first_time_welcome
             exit 0
         fi
         
@@ -204,6 +210,37 @@ main() {
         if [[ "$VERBOSE" == "true" ]]; then
             echo "[DEBUG] Core image built, continuing with normal flow..." >&2
         fi
+    fi
+    
+    # If running from installer, show appropriate message and exit
+    if [[ "${CLAUDEBOX_INSTALLER_RUN:-}" == "true" ]]; then
+        # Check if this is first install or update
+        if [[ -f "$HOME/.claudebox/.installed" ]]; then
+            # Update - just show brief message
+            logo_small
+            echo
+            cecho "ClaudeBox updated successfully!" "$GREEN"
+            echo
+            echo "Run 'claudebox' to start using ClaudeBox."
+            echo
+        else
+            # First install - check if they have projects
+            local project_count=$(ls -1d "$HOME/.claudebox/projects"/*/ 2>/dev/null | wc -l)
+            if [[ $project_count -eq 0 ]]; then
+                # Show full welcome
+                show_first_time_welcome
+            else
+                # Has projects but no .installed file
+                logo_small
+                echo
+                cecho "ClaudeBox installed successfully!" "$GREEN"
+                echo
+                echo "Run 'claudebox' to start using ClaudeBox."
+                echo
+            fi
+            touch "$HOME/.claudebox/.installed"
+        fi
+        exit 0
     fi
     
     # Step 6: Initialize project directory (creates parent with profiles.ini)

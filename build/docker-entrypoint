@@ -61,22 +61,72 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
         if [ -d "$VENV_DIR" ] && [ -f "$VENV_FLAG" ]; then
             # Already set up, just ensure activation in shell rc files
             for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
+                # Add .local/bin to PATH if not already there
+                if ! grep -q "PATH.*\.local/bin" "$shell_rc"; then
+                    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$shell_rc"
+                fi
+                # Add venv activation if not already there
                 if ! grep -q "source $VENV_DIR/bin/activate" "$shell_rc"; then
                     echo "if [ -f $VENV_DIR/bin/activate ]; then source $VENV_DIR/bin/activate; fi" >> "$shell_rc"
                 fi
             done
         else
-            # Create venv and activate it
-            if [ ! -d "$VENV_DIR" ]; then
-                PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- uv venv "$VENV_DIR" || true
+            # Check if venv exists but flag is missing (incomplete previous run)
+            if [ -d "$VENV_DIR" ] && [ ! -f "$VENV_FLAG" ]; then
+                # Try to acquire lock for recreating corrupted venv
+                if runuser -u DOCKERUSER -- mkdir -p "$(dirname "$VENV_FLAG")" && runuser -u DOCKERUSER -- mkdir "$VENV_FLAG.lock" 2>/dev/null; then
+                    # We got the lock, recreate venv with --clear
+                    PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- uv venv --python-preference managed --clear "$VENV_DIR" || true
+                    
+                    # Remove lock and create flag to indicate completion
+                    runuser -u DOCKERUSER -- rmdir "$VENV_FLAG.lock"
+                    runuser -u DOCKERUSER -- touch "$VENV_FLAG"
+                else
+                    # Someone else is fixing it, wait for completion
+                    local wait_count=0
+                    while [ ! -f "$VENV_FLAG" ] && [ $wait_count -lt 60 ]; do
+                        sleep 0.5
+                        ((wait_count++)) || true
+                    done
+                    
+                    if [ ! -f "$VENV_FLAG" ]; then
+                        echo "Warning: Timeout waiting for venv recreation" >&2
+                    fi
+                fi
+            else
+                # Normal case - try to create new venv
+                if runuser -u DOCKERUSER -- mkdir -p "$(dirname "$VENV_FLAG")" && runuser -u DOCKERUSER -- mkdir "$VENV_FLAG.lock" 2>/dev/null; then
+                    # We got the lock, create venv if needed
+                    if [ ! -d "$VENV_DIR" ]; then
+                        PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- uv venv --python-preference managed "$VENV_DIR" || true
+                    fi
+                    
+                    # Remove lock and create flag to indicate completion
+                    runuser -u DOCKERUSER -- rmdir "$VENV_FLAG.lock"
+                    runuser -u DOCKERUSER -- touch "$VENV_FLAG"
+                else
+                    # Someone else is creating it, wait for completion flag
+                    local wait_count=0
+                    while [ ! -f "$VENV_FLAG" ] && [ $wait_count -lt 60 ]; do
+                        sleep 0.5
+                        ((wait_count++)) || true
+                    done
+                    
+                    # If still no flag after timeout, something went wrong
+                    if [ ! -f "$VENV_FLAG" ]; then
+                        echo "Warning: Timeout waiting for venv creation" >&2
+                    fi
+                fi
             fi
             
-            # Create .venv_flag to indicate venv is set up
-            if [ -d "$VENV_DIR" ]; then
-                runuser -u DOCKERUSER -- touch "$VENV_FLAG"
-                
-                # Add activation to shell rc files
+            # Add activation to shell rc files only if venv was successfully created
+            if [ -f "$VENV_FLAG" ] && [ -d "$VENV_DIR" ]; then
                 for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
+                    # Add .local/bin to PATH if not already there
+                    if ! grep -q "PATH.*\.local/bin" "$shell_rc"; then
+                        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$shell_rc"
+                    fi
+                    # Add venv activation if not already there
                     if ! grep -q "source $VENV_DIR/bin/activate" "$shell_rc"; then
                         echo "if [ -f $VENV_DIR/bin/activate ]; then source $VENV_DIR/bin/activate; fi" >> "$shell_rc"
                     fi
@@ -86,7 +136,7 @@ if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
 
         # Check if Python profile is added and deploy Python dev tools if needed
         if [ -f "$CONFIG_FILE" ] && grep -qE 'python|ml|datascience' "$CONFIG_FILE"; then
-            if [ ! -f "$PYDEV_FLAG" ] && [ -d "$VENV_DIR" ]; then
+            if [ ! -f "$PYDEV_FLAG" ] && [ -f "$VENV_FLAG" ] && [ -d "$VENV_DIR" ]; then
                 # Deploy Python dev tools based on profile
                 local python_packages=""
                 
@@ -240,14 +290,13 @@ else
             
             # tooling.md generation is handled in root section above
             
-            # Activate Python venv if it exists
-            if [ -d "$HOME/.claudebox/.venv" ]; then
-                export PATH="$HOME/.claudebox/.venv/bin:$PATH"
-                export VIRTUAL_ENV="$HOME/.claudebox/.venv"
-            fi
-            
             # Ensure uv is in PATH
             export PATH="$HOME/.local/bin:$PATH"
+            
+            # Activate Python venv if it exists
+            if [ -f "$HOME/.claudebox/.venv/bin/activate" ]; then
+                source "$HOME/.claudebox/.venv/bin/activate"
+            fi
             
             # Create symlink from ~/.claude/commands to ~/.claudebox/commands
             # The ~/.claudebox folder is mounted from the host
@@ -293,29 +342,11 @@ else
                 fi
             else
                 if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
-                    # No arguments - check if in tmux
-                    if [[ -n "${TMUX:-}" ]]; then
-                        # Pass the pane ID if we have it
-                        if [[ -n "${CLAUDEBOX_TMUX_PANE:-}" ]]; then
-                            claude /cbox:tmux:activate "${CLAUDEBOX_TMUX_PANE}"
-                        else
-                            claude /cbox:tmux:activate
-                        fi
-                    else
-                        claude
-                    fi
+                    # No arguments - just run claude
+                    claude
                 else
-                    # Has arguments - check if in tmux
-                    if [[ -n "${TMUX:-}" ]]; then
-                        # Pass the pane ID if we have it
-                        if [[ -n "${CLAUDEBOX_TMUX_PANE:-}" ]]; then
-                            claude "$@" /cbox:tmux:activate "${CLAUDEBOX_TMUX_PANE}"
-                        else
-                            claude "$@" /cbox:tmux:activate
-                        fi
-                    else
-                        claude "$@"
-                    fi
+                    # Has arguments - pass them through
+                    claude "$@"
                 fi
             fi
             
