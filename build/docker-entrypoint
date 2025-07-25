@@ -1,0 +1,359 @@
+#!/bin/bash
+set -euo pipefail
+
+# Ensure PATH includes user's local bin directory
+# This will be substituted with actual username during build
+export PATH="/home/DOCKERUSER/.local/bin:$PATH"
+
+# Also set PATH for runuser commands
+export RUNUSER_PATH="/home/DOCKERUSER/.local/bin:$PATH"
+
+ENABLE_SUDO=false
+DISABLE_FIREWALL=false
+SHELL_MODE=false
+new_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --enable-sudo) ENABLE_SUDO=true; shift ;;
+        --disable-firewall) DISABLE_FIREWALL=true; shift ;;
+        shell) SHELL_MODE=true; shift ;;
+        *) new_args+=("$1"); shift ;;
+    esac
+done
+if [[ ${#new_args[@]} -gt 0 ]]; then
+    set -- "${new_args[@]}"
+else
+    set --
+fi
+export DISABLE_FIREWALL
+
+# Debug output (check environment variable)
+if [[ "${VERBOSE:-false}" == "true" ]]; then
+    echo "DEBUG: Arguments: $@" >&2
+    echo "DEBUG: Number of args: $#" >&2
+    echo "DEBUG: ENABLE_SUDO=$ENABLE_SUDO" >&2
+    echo "DEBUG: DISABLE_FIREWALL=$DISABLE_FIREWALL" >&2
+    echo "DEBUG: SHELL_MODE=$SHELL_MODE" >&2
+fi
+
+if [ -f /home/DOCKERUSER/init-firewall ]; then
+    /home/DOCKERUSER/init-firewall || true
+fi
+
+# Handle sudo access based on --enable-sudo flag
+# Note: DOCKERUSER user already has sudoers entry from Dockerfile
+if [ "$ENABLE_SUDO" != "true" ]; then
+    # Remove sudo access if --enable-sudo wasn't passed
+    rm -f /etc/sudoers.d/DOCKERUSER
+fi
+
+# Python venv management with flag-based system
+if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
+    CLAUDEBOX_DIR="/home/DOCKERUSER/.claudebox"
+    CONFIG_FILE="$CLAUDEBOX_DIR/profiles.ini"
+    VENV_DIR="$CLAUDEBOX_DIR/.venv"
+    VENV_FLAG="$CLAUDEBOX_DIR/.venv_flag"
+    PYDEV_FLAG="$CLAUDEBOX_DIR/.pydev_flag"
+
+    # Check if we need to set up the core Python environment
+    if command -v uv >/dev/null 2>&1; then
+        # Check if both venv folder and .venv_flag exist
+        if [ -d "$VENV_DIR" ] && [ -f "$VENV_FLAG" ]; then
+            # Already set up, just ensure activation in shell rc files
+            for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
+                # Add .local/bin to PATH if not already there
+                if ! grep -q "PATH.*\.local/bin" "$shell_rc"; then
+                    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$shell_rc"
+                fi
+                # Add venv activation if not already there
+                if ! grep -q "source $VENV_DIR/bin/activate" "$shell_rc"; then
+                    echo "if [ -f $VENV_DIR/bin/activate ]; then source $VENV_DIR/bin/activate; fi" >> "$shell_rc"
+                fi
+            done
+        else
+            # Check if venv exists but flag is missing (incomplete previous run)
+            if [ -d "$VENV_DIR" ] && [ ! -f "$VENV_FLAG" ]; then
+                # Try to acquire lock for recreating corrupted venv
+                if runuser -u DOCKERUSER -- mkdir -p "$(dirname "$VENV_FLAG")" && runuser -u DOCKERUSER -- mkdir "$VENV_FLAG.lock" 2>/dev/null; then
+                    # We got the lock, recreate venv with --clear
+                    PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- uv venv --python-preference managed --clear "$VENV_DIR" || true
+                    
+                    # Remove lock and create flag to indicate completion
+                    runuser -u DOCKERUSER -- rmdir "$VENV_FLAG.lock"
+                    runuser -u DOCKERUSER -- touch "$VENV_FLAG"
+                else
+                    # Someone else is fixing it, wait for completion
+                    local wait_count=0
+                    while [ ! -f "$VENV_FLAG" ] && [ $wait_count -lt 60 ]; do
+                        sleep 0.5
+                        ((wait_count++)) || true
+                    done
+                    
+                    if [ ! -f "$VENV_FLAG" ]; then
+                        echo "Warning: Timeout waiting for venv recreation" >&2
+                    fi
+                fi
+            else
+                # Normal case - try to create new venv
+                if runuser -u DOCKERUSER -- mkdir -p "$(dirname "$VENV_FLAG")" && runuser -u DOCKERUSER -- mkdir "$VENV_FLAG.lock" 2>/dev/null; then
+                    # We got the lock, create venv if needed
+                    if [ ! -d "$VENV_DIR" ]; then
+                        PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- uv venv --python-preference managed "$VENV_DIR" || true
+                    fi
+                    
+                    # Remove lock and create flag to indicate completion
+                    runuser -u DOCKERUSER -- rmdir "$VENV_FLAG.lock"
+                    runuser -u DOCKERUSER -- touch "$VENV_FLAG"
+                else
+                    # Someone else is creating it, wait for completion flag
+                    local wait_count=0
+                    while [ ! -f "$VENV_FLAG" ] && [ $wait_count -lt 60 ]; do
+                        sleep 0.5
+                        ((wait_count++)) || true
+                    done
+                    
+                    # If still no flag after timeout, something went wrong
+                    if [ ! -f "$VENV_FLAG" ]; then
+                        echo "Warning: Timeout waiting for venv creation" >&2
+                    fi
+                fi
+            fi
+            
+            # Add activation to shell rc files only if venv was successfully created
+            if [ -f "$VENV_FLAG" ] && [ -d "$VENV_DIR" ]; then
+                for shell_rc in /home/DOCKERUSER/.zshrc /home/DOCKERUSER/.bashrc; do
+                    # Add .local/bin to PATH if not already there
+                    if ! grep -q "PATH.*\.local/bin" "$shell_rc"; then
+                        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$shell_rc"
+                    fi
+                    # Add venv activation if not already there
+                    if ! grep -q "source $VENV_DIR/bin/activate" "$shell_rc"; then
+                        echo "if [ -f $VENV_DIR/bin/activate ]; then source $VENV_DIR/bin/activate; fi" >> "$shell_rc"
+                    fi
+                done
+            fi
+        fi
+
+        # Check if Python profile is added and deploy Python dev tools if needed
+        if [ -f "$CONFIG_FILE" ] && grep -qE 'python|ml|datascience' "$CONFIG_FILE"; then
+            if [ ! -f "$PYDEV_FLAG" ] && [ -f "$VENV_FLAG" ] && [ -d "$VENV_DIR" ]; then
+                # Deploy Python dev tools based on profile
+                local python_packages=""
+                
+                # Base Python profile packages
+                if grep -q 'python' "$CONFIG_FILE"; then
+                    python_packages="ipython black mypy pylint pytest ruff poetry pipenv"
+                fi
+                
+                # ML profile packages
+                if grep -q 'ml' "$CONFIG_FILE"; then
+                    python_packages="$python_packages torch transformers scikit-learn numpy pandas matplotlib"
+                fi
+                
+                # Data science profile packages
+                if grep -q 'datascience' "$CONFIG_FILE"; then
+                    python_packages="$python_packages jupyter notebook jupyterlab numpy pandas scipy matplotlib seaborn scikit-learn statsmodels plotly"
+                fi
+                
+                # Remove duplicates and install
+                if [ -n "$python_packages" ]; then
+                    PATH="/home/DOCKERUSER/.local/bin:$PATH" runuser -u DOCKERUSER -- bash -c "
+                        source $VENV_DIR/bin/activate
+                        uv pip install $python_packages
+                    " || true
+                    
+                    # Create .pydev_flag to indicate Python dev tools are deployed
+                    if [ $? -eq 0 ]; then
+                        runuser -u DOCKERUSER -- touch "$PYDEV_FLAG"
+                    fi
+                fi
+            fi
+        fi
+    fi
+fi
+
+# Generate tooling.md if profiles have changed
+if [ -n "${CLAUDEBOX_PROJECT_NAME:-}" ]; then
+    PROFILES_INI="/home/DOCKERUSER/.claudebox/profiles.ini"
+    TOOLING_FILE="/home/DOCKERUSER/.claudebox/tooling.md"
+    CHECKSUM_FILE="/home/DOCKERUSER/.claudebox/.tooling_checksum"
+    
+    if [ -f "$PROFILES_INI" ]; then
+        # Calculate current checksum of profiles.ini
+        CURRENT_CHECKSUM=$(sha256sum "$PROFILES_INI" | cut -d' ' -f1)
+        
+        # Check if we need to regenerate
+        NEED_REGENERATE=false
+        if [ ! -f "$TOOLING_FILE" ]; then
+            # No tooling file exists yet
+            NEED_REGENERATE=true
+        elif [ ! -f "$CHECKSUM_FILE" ]; then
+            # No checksum file exists
+            NEED_REGENERATE=true
+        else
+            # Compare checksums - use if statement to avoid set -e issues
+            STORED_CHECKSUM=""
+            if [ -f "$CHECKSUM_FILE" ]; then
+                STORED_CHECKSUM=$(cat "$CHECKSUM_FILE")
+            fi
+            if [ "$CURRENT_CHECKSUM" != "$STORED_CHECKSUM" ]; then
+                NEED_REGENERATE=true
+            fi
+        fi
+        
+        if [ "$NEED_REGENERATE" = "true" ]; then
+            # Generate the tooling file as the docker user
+            if runuser -u DOCKERUSER -- generate-tools-readme >/dev/null 2>&1; then
+                # Store the checksum as the docker user
+                runuser -u DOCKERUSER -- bash -c "echo '$CURRENT_CHECKSUM' > '$CHECKSUM_FILE'"
+            fi
+        fi
+    fi
+fi
+
+cd /home/DOCKERUSER
+
+# No need for complex exit handlers - just copy after claude exits
+
+if [[ "${SHELL_MODE:-false}" == "true" ]]; then
+    # Use runuser to avoid PTY signal handling issues
+    if [[ "${CLAUDEBOX_WRAP_TMUX:-false}" == "true" ]]; then
+        # For tmux, create an init script that shows logo then starts shell
+        cat > /tmp/tmux-init.sh << 'EOF'
+#!/bin/bash
+export PATH="/home/DOCKERUSER/.local/bin:$PATH"
+if [ -d /home/DOCKERUSER/.claudebox/.venv ]; then
+    export PATH="/home/DOCKERUSER/.claudebox/.venv/bin:$PATH"
+    export VIRTUAL_ENV="/home/DOCKERUSER/.claudebox/.venv"
+fi
+source /home/DOCKERUSER/.claudebox/common.sh 2>/dev/null
+logo_header 2>/dev/null
+exec /bin/zsh
+EOF
+        chmod +x /tmp/tmux-init.sh
+        sed -i "s|DOCKERUSER|$DOCKERUSER|g" /tmp/tmux-init.sh
+        exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && cd /workspace && exec tmux new-session /tmp/tmux-init.sh"
+    else
+        # For non-tmux, show logo before starting shell
+        exec runuser -u DOCKERUSER -- bash -c "source /home/DOCKERUSER/.nvm/nvm.sh && export PATH=\"/home/DOCKERUSER/.local/bin:\$PATH\" && [ -d /home/DOCKERUSER/.claudebox/.venv ] && export PATH=\"/home/DOCKERUSER/.claudebox/.venv/bin:\$PATH\" && export VIRTUAL_ENV=\"/home/DOCKERUSER/.claudebox/.venv\"; cd /workspace && source /home/DOCKERUSER/.claudebox/common.sh 2>/dev/null && logo_header 2>/dev/null; exec /bin/zsh"
+    fi
+else
+    # Claude mode - handle wrapper logic directly here
+    if [[ "${1:-}" == "update" ]]; then
+        # Special update handling - pass all arguments
+        shift  # Remove "update" from arguments
+        exec runuser -u DOCKERUSER -- bash -c '
+            export NVM_DIR="$HOME/.nvm"
+            if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+                \. "$NVM_DIR/nvm.sh"
+                nvm use default >/dev/null 2>&1 || {
+                    echo "Warning: Failed to activate default Node version" >&2
+                }
+            else
+                echo "Warning: NVM not found at $NVM_DIR" >&2
+            fi
+            
+            cd /workspace
+            echo "Running update command..."
+            
+            # Check for stale update lock (older than 5 minutes)
+            lock_file="$HOME/.DOCKERUSER/.update.lock"
+            if [[ -f "$lock_file" ]]; then
+                lock_age=$(( $(date +%s) - $(stat -f %m "$lock_file" 2>/dev/null || stat -c %Y "$lock_file" 2>/dev/null || echo 0) ))
+                if [[ $lock_age -gt 300 ]]; then
+                    rm -f "$lock_file"
+                fi
+            fi
+            
+            # Capture the output of claude update to check if already up to date
+            update_output=$(claude update 2>&1)
+            echo "$update_output"
+            
+            # Only run version check if an actual update occurred
+            if echo "$update_output" | grep -q "Successfully updated\|Installing update"; then
+                echo "Verifying update..."
+                claude --version
+            fi
+        '
+    else
+        # Regular DOCKERUSER execution
+        exec runuser -u DOCKERUSER -- bash -c '
+            export NVM_DIR="$HOME/.nvm"
+            if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+                \. "$NVM_DIR/nvm.sh"
+                nvm use default >/dev/null 2>&1 || {
+                    echo "Warning: Failed to activate default Node version" >&2
+                }
+            else
+                echo "Warning: NVM not found at $NVM_DIR" >&2
+            fi
+            
+            # tooling.md generation is handled in root section above
+            
+            # Ensure uv is in PATH
+            export PATH="$HOME/.local/bin:$PATH"
+            
+            # Activate Python venv if it exists
+            if [ -f "$HOME/.claudebox/.venv/bin/activate" ]; then
+                source "$HOME/.claudebox/.venv/bin/activate"
+            fi
+            
+            # Create symlink from ~/.claude/commands to ~/.claudebox/commands
+            # The ~/.claudebox folder is mounted from the host
+            if [ -d "$HOME/.claudebox/commands" ]; then
+                if [ ! -e "$HOME/.claude/commands" ]; then
+                    ln -s "$HOME/.claudebox/commands" "$HOME/.claude/commands"
+                fi
+            fi
+            
+            cd /workspace
+            
+            # Check if .claude/projects exists and filter out -c/--continue if not
+            if [[ ! -d "$HOME/.claude/projects" ]]; then
+                # Filter out -c and --continue flags
+                filtered_args=()
+                skip_next=false
+                for arg in "$@"; do
+                    if [[ "$skip_next" == "true" ]]; then
+                        skip_next=false
+                        continue
+                    fi
+                    
+                    case "$arg" in
+                        -c|--continue)
+                            # Skip this flag
+                            ;;
+                        *)
+                            filtered_args+=("$arg")
+                            ;;
+                    esac
+                done
+                
+                # Update positional parameters
+                set -- "${filtered_args[@]}"
+            fi
+            
+            # If no arguments and stdin is a terminal, run claude in interactive mode
+            if [[ "${CLAUDEBOX_WRAP_TMUX:-false}" == "true" ]]; then
+                if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
+                    tmux new-session claude
+                else
+                    tmux new-session claude "$@"
+                fi
+            else
+                if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
+                    # No arguments - just run claude
+                    claude
+                else
+                    # Has arguments - pass them through
+                    claude "$@"
+                fi
+            fi
+            
+            # After claude exits, copy .claude.json if it was created
+            if [[ -f "$HOME/.claude.json" ]] && [[ ! -f "$HOME/.claudebox/${CLAUDEBOX_SLOT_NAME}/.claude.json" ]]; then
+                cp "$HOME/.claude.json" "$HOME/.claudebox/${CLAUDEBOX_SLOT_NAME}/.claude.json"
+            fi
+        ' -- "$@"
+    fi
+fi

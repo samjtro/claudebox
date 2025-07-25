@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Generate tooling.md for the current environment
+
+# Find the tools-report.sh file - it should be in the mounted source directory
+TOOLS_REPORT_FILE=""
+for search_path in "/home/claude/.claudebox/source/claudebox/lib/tools-report.sh" "/workspace/lib/tools-report.sh" "/usr/local/lib/claudebox/tools-report.sh"; do
+    if [[ -f "$search_path" ]]; then
+        TOOLS_REPORT_FILE="$search_path"
+        break
+    fi
+done
+
+if [[ -z "$TOOLS_REPORT_FILE" ]]; then
+    echo "Error: Cannot find tools-report.sh" >&2
+    exit 1
+fi
+
+# Source the tools report module
+source "$TOOLS_REPORT_FILE"
+
+# Generate the report
+generate_tools_report
+
+# Show where the file was saved
+echo "tooling.md has been generated in ~/.claudebox/"

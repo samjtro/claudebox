@@ -35,3 +35,9 @@ echo "Running same tests in Bash 4+ for comparison..."
 echo "=========================================="
 echo
 bash "$SCRIPT_DIR/test_bash32_compat.sh"
+
+# Clean up the Bash 3.2 image
+echo
+echo "Cleaning up bash:3.2 image..."
+docker rmi bash:3.2 >/dev/null 2>&1 || true
+echo "Test complete."

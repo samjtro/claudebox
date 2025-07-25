@@ -47,6 +47,7 @@ The Ultimate Claude Code Docker Development Environment - Run Claude AI's coding
 - **Python Virtual Environments**: Automatic per-project venv creation with uv
 - **Cross-Platform**: Works on Ubuntu, Debian, Fedora, Arch, and more
 - **Shell Experience**: Powerline zsh with syntax highlighting and autosuggestions
+- **Tmux Integration**: Seamless tmux socket mounting for multi-pane workflows
 
 ## 📋 Prerequisites
 
@@ -56,20 +57,78 @@ The Ultimate Claude Code Docker Development Environment - Run Claude AI's coding
 
 ## 🛠️ Installation
 
-```bash
-# Download and setup ClaudeBox
-curl -O https://raw.githubusercontent.com/RchGrav/claudebox/main/claudebox
-chmod +x claudebox
+ClaudeBox v2.0.0 offers two installation methods:
 
-# Run initial setup (handles everything automatically)
-./claudebox
+### Method 1: Self-Extracting Installer (Recommended)
+
+The self-extracting installer is ideal for automated setups and quick installation:
+
+```bash
+# Download the latest release
+wget https://github.com/RchGrav/claudebox/releases/latest/download/claudebox.run
+chmod +x claudebox.run
+./claudebox.run
 ```
 
-The script will:
-- ✅ Check for Docker (install if needed)
-- ✅ Configure Docker for non-root usage
-- ✅ Provision a docker container per project
-- ✅ Create a global symlink for easy access
+This will:
+- Extract ClaudeBox to `~/.claudebox/source/`
+- Create a symlink at `~/.local/bin/claudebox` (you may need to add `~/.local/bin` to your PATH)
+- Show setup instructions if PATH configuration is needed
+
+### Method 2: Archive Installation
+
+For manual installation or custom locations, use the archive:
+
+```bash
+# Download the archive
+wget https://github.com/RchGrav/claudebox/releases/latest/download/claudebox-2.0.0.tar.gz
+
+# Extract to your preferred location
+mkdir -p ~/my-tools/claudebox
+tar -xzf claudebox-2.0.0.tar.gz -C ~/my-tools/claudebox
+
+# Run main.sh to create symlink
+cd ~/my-tools/claudebox
+./main.sh
+
+# Or create your own symlink
+ln -s ~/my-tools/claudebox/main.sh ~/.local/bin/claudebox
+```
+
+### Development Installation
+
+For development or testing the latest changes:
+```bash
+# Clone the repository
+git clone https://github.com/RchGrav/claudebox.git
+cd claudebox
+
+# Build the installer
+bash .builder/build.sh
+
+# Run the installer
+./claudebox.run
+```
+
+### PATH Configuration
+
+If `claudebox` command is not found after installation, add `~/.local/bin` to your PATH:
+
+```bash
+# For Bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# For Zsh (macOS default)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+The installer will:
+- ✅ Extract ClaudeBox to `~/.claudebox/source/`
+- ✅ Create symlink at `~/.local/bin/claudebox`
+- ✅ Check for Docker (install if needed on first run)
+- ✅ Configure Docker for non-root usage (on first run)
 
 
 ## 📚 Usage
@@ -215,6 +274,26 @@ claudebox update
 # View/edit firewall allowlist
 claudebox allowlist
 ```
+
+### Tmux Integration
+
+ClaudeBox provides tmux support for multi-pane workflows:
+
+```bash
+# Launch ClaudeBox with tmux support
+claudebox tmux
+
+# If you're already in a tmux session, the socket will be automatically mounted
+# Otherwise, tmux will be available inside the container
+
+# Use tmux commands inside the container:
+# - Create new panes: Ctrl+b % (vertical) or Ctrl+b " (horizontal)
+# - Switch panes: Ctrl+b arrow-keys  
+# - Create new windows: Ctrl+b c
+# - Switch windows: Ctrl+b n/p or Ctrl+b 0-9
+```
+
+ClaudeBox automatically detects and mounts existing tmux sockets from the host, or provides tmux functionality inside the container for powerful multi-context workflows.
 
 ### Task Engine
 

@@ -1,18 +1,74 @@
+# MCP configuration (contains API keys)
+.mcp.json
+
 # Claude-specific files (project-specific, not to be committed)
 .claude/
 CLAUDE.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+# Note: build/ directory contains Docker build files, not Python build
+# Python-specific build directories:
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Backup files
 *.backup
 *.bak
 
-# OS-specific files
-.DS_Store
-Thumbs.db
+# Logs
+*.log
+logs/
 
-# Editor files
-*.swp
-*.swo
-*~
-.vscode/
-.idea/
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+
+# Local environment
+.env
+.env.local
+
+# Test directories
+test_project/
+test_new_project/
+test-project/
+
+# Backlog (local task management)
+backlog/
+
+# Generated installer
+claudebox.run.sh
+claudebox.run
