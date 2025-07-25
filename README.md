@@ -57,32 +57,71 @@ The Ultimate Claude Code Docker Development Environment - Run Claude AI's coding
 
 ## 🛠️ Installation
 
-### Quick Install (Recommended)
+ClaudeBox v2.0.0 offers two installation methods:
 
-Once releases are available:
+### Method 1: Self-Extracting Installer (Recommended)
+
+The self-extracting installer is ideal for automated setups and quick installation:
+
 ```bash
-# Download and run the self-extracting installer
-curl -fsSL https://github.com/RchGrav/claudebox/releases/latest/download/claudebox.run.sh | bash
+# Download the latest release
+wget https://github.com/RchGrav/claudebox/releases/latest/download/claudebox.run
+chmod +x claudebox.run
+./claudebox.run
 ```
 
-For now (until release is published):
+This will:
+- Extract ClaudeBox to `~/.claudebox/source/`
+- Create a symlink at `~/.local/bin/claudebox` (you may need to add `~/.local/bin` to your PATH)
+- Show setup instructions if PATH configuration is needed
+
+### Method 2: Archive Installation
+
+For manual installation or custom locations, use the archive:
+
 ```bash
-# Clone and run the installer
-git clone https://github.com/RchGrav/claudebox.git
-cd claudebox
-bash .builder/build.sh
-bash claudebox.run.sh
+# Download the archive
+wget https://github.com/RchGrav/claudebox/releases/latest/download/claudebox-2.0.0.tar.gz
+
+# Extract to your preferred location
+mkdir -p ~/my-tools/claudebox
+tar -xzf claudebox-2.0.0.tar.gz -C ~/my-tools/claudebox
+
+# Run main.sh to create symlink
+cd ~/my-tools/claudebox
+./main.sh
+
+# Or create your own symlink
+ln -s ~/my-tools/claudebox/main.sh ~/.local/bin/claudebox
 ```
 
-### Manual Install (Development)
+### Development Installation
 
+For development or testing the latest changes:
 ```bash
 # Clone the repository
 git clone https://github.com/RchGrav/claudebox.git
 cd claudebox
 
-# Run the setup script
-./setup.sh
+# Build the installer
+bash .builder/build.sh
+
+# Run the installer
+./claudebox.run
+```
+
+### PATH Configuration
+
+If `claudebox` command is not found after installation, add `~/.local/bin` to your PATH:
+
+```bash
+# For Bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# For Zsh (macOS default)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
 The installer will:

@@ -4,9 +4,23 @@
 
 set -euo pipefail
 
+# Get version from main.sh
+VERSION=$(grep -m1 'readonly CLAUDEBOX_VERSION=' main.sh | cut -d'"' -f2)
+if [[ -z "$VERSION" ]]; then
+  echo "❌ Could not extract version from main.sh" >&2
+  exit 1
+fi
+
+echo "🔨 Building ClaudeBox v$VERSION"
+
+# Clean dist directory
+echo "🧹 Cleaning dist directory..."
+rm -rf dist
+mkdir -p dist
+
 TEMPLATE=".builder/script_template_root.sh"
-OUTPUT="claudebox.run"
-ARCHIVE="archive.tar.gz"
+OUTPUT="dist/claudebox.run"
+ARCHIVE="dist/claudebox-${VERSION}.tar.gz"
 
 # Create archive in temp location to avoid "file changed as we read it" error
 TEMP_ARCHIVE="/tmp/claudebox_archive_$$.tar.gz"
@@ -22,6 +36,7 @@ tar -czf "$TEMP_ARCHIVE" \
   --exclude='.vscode' \
   --exclude='.idea' \
   --exclude='.mcp.json' \
+  --exclude='dist' \
   --exclude='claudebox.run' \
   --exclude='*.swp' \
   --exclude='*~' \
@@ -48,8 +63,12 @@ sed "s/__ARCHIVE_SHA256__/$SHA256/g" "$TEMPLATE" > "$OUTPUT"
 cat "$ARCHIVE" >> "$OUTPUT"
 chmod +x "$OUTPUT"
 
-# Cleanup
-rm -f "$ARCHIVE"
+# Keep the archive (don't delete it)
 
-echo "✅ $OUTPUT created (SHA256: $SHA256)"
-echo "📏 Size: $(ls -lh "$OUTPUT" | awk '{print $5}')"
+echo "✅ Files created:"
+echo "   📦 Installer: $OUTPUT ($(ls -lh "$OUTPUT" | awk '{print $5}'))"
+echo "   📄 Archive: $ARCHIVE ($(ls -lh "$ARCHIVE" | awk '{print $5}'))"
+echo "   🔐 SHA256: $SHA256"
+
+# Create a symlink from the root for backward compatibility
+ln -sf "$OUTPUT" claudebox.run

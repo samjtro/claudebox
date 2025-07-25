@@ -5,6 +5,9 @@
 #  Clean CLI implementation following the four-bucket architecture
 # ==============================================================================
 
+# Version
+readonly CLAUDEBOX_VERSION="2.0.0"
+
 set -euo pipefail
 
 # Add error handler to show where script fails
