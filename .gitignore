@@ -1,6 +1,10 @@
 # MCP configuration (contains API keys)
 .mcp.json
 
+# Claude-specific files (project-specific, not to be committed)
+.claude/
+CLAUDE.md
+
 # Python
 __pycache__/
 *.py[cod]
@@ -39,6 +43,10 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Backup files
+*.backup
+*.bak
 
 # Logs
 *.log

@@ -137,19 +137,19 @@ echo "-----------------------------------"
 
 # Test 10: No associative arrays
 test_no_associative_arrays() {
-    ! grep -q "declare -A" "$CLAUDEBOX_SCRIPT"
+    ! grep -q "declare -A" "$CONFIG_SCRIPT"
 }
 run_test "No associative arrays" test_no_associative_arrays
 
 # Test 11: No ${var^^} uppercase
 test_no_uppercase_expansion() {
-    ! grep -q '\${[^}]*\^\^}' "$CLAUDEBOX_SCRIPT"
+    ! grep -q '\${[^}]*\^\^}' "$CONFIG_SCRIPT"
 }
 run_test "No \${var^^} syntax" test_no_uppercase_expansion
 
 # Test 12: No [[ -v syntax
 test_no_v_syntax() {
-    ! grep -q '\[\[ -v ' "$CLAUDEBOX_SCRIPT"
+    ! grep -q '\[\[ -v ' "$CONFIG_SCRIPT"
 }
 run_test "No [[ -v syntax" test_no_v_syntax
 
